@@ -44,8 +44,26 @@ wss.on("connection", (socket) => {
 				});
 			}
 
+			if(parsedMsg.type == "create"){
+				// just create a room in with this user in the doubts table
+				// this makes sure a user can "join" a room only if it has been "created" by someone  
+				const user = await client.users.findUnique({
+					where: {
+						email: parsedMsg.payload.email
+					}
+				})
+				if(!user) return;
+				await client.doubts.create({
+					data: {
+						user_id: user.id,
+						room: parsedMsg.payload.roomId,
+						doubt: ""
+					}
+				})
+			}
+
 			// user is requesting to chat
-			if(parsedMsg.type == "chat"){
+			if(parsedMsg.type == "ask-doubt"){
 
 			}
 
@@ -79,8 +97,16 @@ wss.on("connection", (socket) => {
 // }
 
 // {
-//     "type": "chat",
+//     "type": "ask-doubt",
 //     "payload": {
 //         "msg": "hi there"
+//     }
+// }
+
+// {
+//     "type": "create",
+//     "payload": {
+//         "email": "abc@gmail.com",
+//			"roomId" "123"
 //     }
 // }
