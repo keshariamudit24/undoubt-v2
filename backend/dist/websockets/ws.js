@@ -11,6 +11,9 @@ const path_1 = __importDefault(require("path"));
 dotenv_1.default.config({ path: path_1.default.join(__dirname, "../../.env") });
 const client = new client_1.PrismaClient();
 const wss = new ws_1.WebSocketServer({ port: 8080 });
+// In-memory room tracking: roomId -> Set of sockets
+// "abc123" -> {socket1, socket2, socket3 etc..}
+const rooms = new Map();
 wss.on("connection", (socket) => {
     console.log("connection established");
     // server gets msg from client
@@ -35,6 +38,12 @@ wss.on("connection", (socket) => {
                     }));
                     return;
                 }
+                // add the user/socket in the in-memory mapping (roomId -> sockets)
+                if (!rooms.has(parsedMsg.payload.roomId)) {
+                    rooms.set(parsedMsg.payload.roomId, new Set());
+                }
+                rooms.get(parsedMsg.payload.roomId)?.add(socket);
+                console.log(`Socket joined room ${parsedMsg.payload.roomId}`);
                 const user = await client.users.findUnique({
                     where: { email: parsedMsg.payload.email }
                 });
@@ -43,15 +52,23 @@ wss.on("connection", (socket) => {
                 await client.doubts.create({
                     data: {
                         user_id: user.id,
-                        room: parsedMsg.payload.roomId,
-                        doubt: ""
+                        room: parsedMsg.payload.roomId
                     }
                 });
+                socket.send(JSON.stringify({
+                    type: "system",
+                    messageType: "success",
+                    payload: { message: "Successfully joined the room" }
+                }));
             }
             // ---------------> CREATE ROOM <-----------------
             if (parsedMsg.type == "create") {
                 // just create a room in with this user in the doubts table
                 // this makes sure a user can "join" a room only if it has been "created" by someone  
+                if (!rooms.has(parsedMsg.payload.roomId)) {
+                    rooms.set(parsedMsg.payload.roomId, new Set());
+                }
+                rooms.get(parsedMsg.payload.roomId)?.add(socket);
                 const user = await client.users.findUnique({
                     where: {
                         email: parsedMsg.payload.email
@@ -63,7 +80,6 @@ wss.on("connection", (socket) => {
                     data: {
                         user_id: user.id,
                         room: parsedMsg.payload.roomId,
-                        doubt: ""
                     }
                 });
             }
@@ -95,10 +111,14 @@ wss.on("connection", (socket) => {
                     }
                 });
                 // broadcast that doubt to everyone present in the room 
-                const doubtRows = await client.doubts.findMany();
-                console.log(doubtRows);
-                for (const i in doubtRows) {
-                    const doubtObj = doubtRows[i];
+                const sockets = rooms.get(parsedMsg.payload.roomId); // you get the set of all sockets present in that room 
+                if (sockets) {
+                    for (const clientSocket of sockets) {
+                        clientSocket.send(JSON.stringify({
+                            type: "newDoubt",
+                            payload: parsedMsg.payload.msg
+                        }));
+                    }
                 }
             }
             // ---------------> LEAVE ROOM <-----------------
