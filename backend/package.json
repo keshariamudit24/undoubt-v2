@@ -4,7 +4,9 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc -b",
-    "devws": "npm run build && node ./dist/websockets/ws.js"
+    "devws": "npm run build && node ./dist/websockets/ws.js",
+    "devexp": "npm run build && node ./dist/index.js",
+    "dev:backend": "npm run build && concurrently \"node ./dist/index.js\" \"node ./dist/websockets/ws.js\""
   },
   "keywords": [],
   "author": "",
@@ -23,5 +25,8 @@
     "prisma": "^6.13.0",
     "typescript": "^5.9.2",
     "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
   }
 }
