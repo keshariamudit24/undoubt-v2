@@ -19,6 +19,6 @@ model Doubts {
   id        Int      @id @default(autoincrement())
   user_id   Int 
   room      String 
-  doubt     String 
+  doubt     String? 
   user      Users   @relation(fields: [user_id], references: [id])
 }

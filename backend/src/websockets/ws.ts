@@ -1,8 +1,14 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { PrismaClient } from '@prisma/client';
+import dotenv from "dotenv";
+import path from "path";
+
+// Load environment variables first
+dotenv.config({ path: path.join(__dirname, "../../.env") });
 
 const client = new PrismaClient();
 const wss = new WebSocketServer({ port: 8080 });
+
 
 wss.on("connection", (socket) => {
 	console.log("connection established")
@@ -12,7 +18,7 @@ wss.on("connection", (socket) => {
 			// parse it into JSON because we get Buffer object by default 
 			const parsedMsg = JSON.parse(msg.toString());
 			
-			// user is requesting to join a room
+			// ---------------> JOIN ROOM <-----------------
 			if(parsedMsg.type == "join"){
 				// check if room exists
 				// if it does, add the person to the room
@@ -43,7 +49,8 @@ wss.on("connection", (socket) => {
 					}
 				});
 			}
-
+			
+			// ---------------> CREATE ROOM <-----------------
 			if(parsedMsg.type == "create"){
 				// just create a room in with this user in the doubts table
 				// this makes sure a user can "join" a room only if it has been "created" by someone  
@@ -62,12 +69,42 @@ wss.on("connection", (socket) => {
 				})
 			}
 
-			// user is requesting to chat
+			// ---------------> ASK DOUBT <-----------------
 			if(parsedMsg.type == "ask-doubt"){
+				// a user sends a doubt
+				// store the doubt in db
+				  // check if the user exists in the doubts table
+				const user = await client.users.findUnique({
+					where: {
+						email: parsedMsg.payload.email
+					}
+				});
+				if (!user) return;
+				const currUser = await client.doubts.findFirst({
+					where: {
+						user_id: user.id,
+					}
+				});
+				if(!currUser) return;
+				// store in db
+				await client.doubts.create({
+					data: {
+						user_id: user.id,
+						room: parsedMsg.payload.roomId,
+						doubt: parsedMsg.payload.msg
+					}
+				})
 
+				// broadcast that doubt to everyone present in the room 
+				const doubtRows = await client.doubts.findMany();
+				console.log(doubtRows)
+				for(const i in doubtRows){
+					const doubtObj = doubtRows[i];
+			
+				}
 			}
 
-			// user is requesting to leave the room
+			// ---------------> LEAVE ROOM <-----------------
 			if(parsedMsg.type == "leave"){
 
 			}
@@ -99,6 +136,8 @@ wss.on("connection", (socket) => {
 // {
 //     "type": "ask-doubt",
 //     "payload": {
+//		   "email": "abc@gmail.com",
+//		   "roomId": "abc123",
 //         "msg": "hi there"
 //     }
 // }
@@ -106,7 +145,7 @@ wss.on("connection", (socket) => {
 // {
 //     "type": "create",
 //     "payload": {
-//         "email": "abc@gmail.com",
+//          "email": "abc@gmail.com",
 //			"roomId" "123"
 //     }
 // }
