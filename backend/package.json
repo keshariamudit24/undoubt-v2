@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "tsc -b && node ./dist/index.js"
+    "build": "tsc -b",
+    "devws": "npm run build && node ./dist/websockets/ws.js"
   },
   "keywords": [],
   "author": "",
@@ -11,8 +12,12 @@
   "description": "",
   "dependencies": {
     "@prisma/client": "^6.13.0",
+    "@types/express": "^5.0.3",
+    "@types/node": "^20.0.0",
     "@types/pg": "^8.15.5",
     "@types/ws": "^8.18.1",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
     "pg": "^8.16.3",
     "prettier": "^3.6.2",
     "prisma": "^6.13.0",
