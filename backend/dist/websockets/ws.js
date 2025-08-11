@@ -12,8 +12,9 @@ dotenv_1.default.config({ path: path_1.default.join(__dirname, "../../.env") });
 const client = new client_1.PrismaClient();
 const wss = new ws_1.WebSocketServer({ port: 8080 });
 // In-memory room tracking: roomId -> Set of sockets
-// "abc123" -> {socket1, socket2, socket3 etc..}
 const rooms = new Map();
+// Track socket to user mapping for cleanup
+const socketUsers = new Map();
 wss.on("connection", (socket) => {
     console.log("connection established");
     // server gets msg from client
@@ -49,6 +50,12 @@ wss.on("connection", (socket) => {
                 });
                 if (!user)
                     return;
+                // Store user info for this socket
+                socketUsers.set(socket, {
+                    userId: user.id,
+                    email: parsedMsg.payload.email,
+                    roomId: parsedMsg.payload.roomId
+                });
                 await client.doubts.create({
                     data: {
                         user_id: user.id,
@@ -76,6 +83,12 @@ wss.on("connection", (socket) => {
                 });
                 if (!user)
                     return;
+                // Store user info for this socket
+                socketUsers.set(socket, {
+                    userId: user.id,
+                    email: parsedMsg.payload.email,
+                    roomId: parsedMsg.payload.roomId
+                });
                 await client.doubts.create({
                     data: {
                         user_id: user.id,
@@ -123,6 +136,25 @@ wss.on("connection", (socket) => {
             }
             // ---------------> LEAVE ROOM <-----------------
             if (parsedMsg.type == "leave") {
+                const user = await client.users.findUnique({
+                    where: { email: parsedMsg.payload.email }
+                });
+                if (!user)
+                    return;
+                // Remove from database
+                await client.doubts.deleteMany({
+                    where: {
+                        user_id: user.id,
+                        room: parsedMsg.payload.roomId
+                    }
+                });
+                rooms.get(parsedMsg.payload.roomId)?.delete(socket);
+                // Clear socket user mapping
+                socketUsers.delete(socket);
+                socket.send(JSON.stringify({
+                    type: "user left",
+                    payload: { msg: "user successfully left the room" }
+                }));
             }
         }
         catch (error) {
@@ -133,7 +165,32 @@ wss.on("connection", (socket) => {
         }
     });
     // close the connection 
-    socket.on("close", () => {
+    socket.on("close", async () => {
+        try {
+            const userInfo = socketUsers.get(socket);
+            if (userInfo) {
+                // Remove user from database
+                await client.doubts.deleteMany({
+                    where: {
+                        user_id: userInfo.userId
+                    }
+                });
+                // Remove from room tracking
+                if (userInfo.roomId) {
+                    rooms.get(userInfo.roomId)?.delete(socket);
+                    // Clean up empty rooms
+                    if (rooms.get(userInfo.roomId)?.size === 0) {
+                        rooms.delete(userInfo.roomId);
+                    }
+                }
+                // Clean up socket tracking
+                socketUsers.delete(socket);
+                console.log(`User ${userInfo.email} disconnected and cleaned up from database`);
+            }
+        }
+        catch (error) {
+            console.error("Error during socket cleanup:", error);
+        }
     });
 });
 // "msg" breakdown 
