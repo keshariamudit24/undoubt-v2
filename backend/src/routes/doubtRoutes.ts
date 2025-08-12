@@ -21,4 +21,5 @@ doubtRouter.get('/get-all', expressAsyncHandler(async (req, res) => {
     })
 }))
 
+
 export default doubtRouter;

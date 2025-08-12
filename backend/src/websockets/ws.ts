@@ -13,6 +13,29 @@ const wss = new WebSocketServer({ port: 8080 });
 const rooms = new Map<string, Set<WebSocket>>();
 // Track socket to user mapping for cleanup
 const socketUsers = new Map<WebSocket, { userId: number, email: string, roomId?: string }>();
+// user/socket -> details
+
+interface Msg {
+  type: string;
+  payload: {
+    doubtId: number;
+  };
+}
+
+interface NewMsg {
+  type: string;
+  payload: {
+    doubt: string;
+  };
+}
+
+function broadcast(sockets: Set<WebSocket>, message: any){
+	if(sockets){
+		for(const clientSocket of sockets){
+			clientSocket.send(JSON.stringify(message));
+		}
+	}
+}
 
 wss.on("connection", (socket) => {
 	console.log("connection established")
@@ -136,13 +159,14 @@ wss.on("connection", (socket) => {
 
 				// broadcast that doubt to everyone present in the room 
 				const sockets = rooms.get(parsedMsg.payload.roomId) // you get the set of all sockets present in that room 
-				if(sockets){
-					for(const clientSocket of sockets){
-						clientSocket.send(JSON.stringify({
-							type: "newDoubt",
-							payload: parsedMsg.payload.msg
-						}));
-                    }
+				const message: NewMsg = {
+					type: "new doubt triggered",
+					payload: {
+						doubt: parsedMsg.payload.msg 
+					}
+				}
+				if(sockets) {
+					broadcast(sockets, message)
 				}
 			}
 
@@ -161,6 +185,17 @@ wss.on("connection", (socket) => {
 					}
 				})
 
+				const sockets = rooms.get(parsedMsg.payload.roomId)
+				const message: Msg = {
+					type: "upvote triggered",
+					payload: {
+						doubtId: parsedMsg.payload.doubtId 
+					}
+				}
+				if (sockets) {
+					broadcast(sockets, message)
+				}
+
 				socket.send(JSON.stringify({
 					msg: "upvoted successfully"
 				}))
@@ -168,31 +203,21 @@ wss.on("connection", (socket) => {
 
 			// ---------------> DOWNVOTE A DOUBT <-----------------
 			if(parsedMsg.type == "downvote"){
-				
-			}
-
-			// ---------------> LEAVE ROOM <-----------------
-			if(parsedMsg.type == "leave"){
-				const user = await client.users.findUnique({
-					where: { email: parsedMsg.payload.email }
-				});
-				if (!user) return;
-
-				// Remove from database
-				await client.doubts.deleteMany({
+				// find the doubt and update the upvotes by - 1
+				await client.doubts.update({
 					where: {
-						user_id: user.id,
-						room: parsedMsg.payload.roomId
+						id: parsedMsg.payload.doubtId,
+						room: parsedMsg.payload.rooomId
+					},
+					data: {
+						upvotes: {
+							decrement: 1
+						}
 					}
-				});
+				})
 
-				rooms.get(parsedMsg.payload.roomId)?.delete(socket);
-				// Clear socket user mapping
-				socketUsers.delete(socket);
-				
 				socket.send(JSON.stringify({
-					type: "user left",
-					payload: { msg: "user successfully left the room" }
+					msg: "upvoted successfully"
 				}))
 			}
 
@@ -264,7 +289,7 @@ wss.on("connection", (socket) => {
 // }
 
 // {
-//   "type": "upvote",
+//   "type": "upvote/downvote",
 //   "payload": {
 //     "roomId": "abc123",
 //     "doubtId": 42

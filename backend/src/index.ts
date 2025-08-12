@@ -1,7 +1,7 @@
 import dotenv from 'dotenv'
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import doubtRouter from './routes/doubtrouts';
+import doubtRouter from './routes/doubtRoutes';
 
 dotenv.config()
 const app = express();
