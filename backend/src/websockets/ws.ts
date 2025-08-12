@@ -146,6 +146,9 @@ wss.on("connection", (socket) => {
 				}
 			}
 
+			// ---------------> UPVOTE A DOUBT <-----------------
+			if(parsedMsg.type )
+
 			// ---------------> LEAVE ROOM <-----------------
 			if(parsedMsg.type == "leave"){
 				const user = await client.users.findUnique({
