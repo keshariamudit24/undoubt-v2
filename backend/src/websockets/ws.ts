@@ -147,7 +147,29 @@ wss.on("connection", (socket) => {
 			}
 
 			// ---------------> UPVOTE A DOUBT <-----------------
-			if(parsedMsg.type )
+			if(parsedMsg.type == "upvote"){
+				// find the doubt and update the upvotes by + 1
+				await client.doubts.update({
+					where: {
+						id: parsedMsg.payload.doubtId,
+						room: parsedMsg.payload.rooomId
+					},
+					data: {
+						upvotes: {
+							increment: 1
+						}
+					}
+				})
+
+				socket.send(JSON.stringify({
+					msg: "upvoted successfully"
+				}))
+			}
+
+			// ---------------> DOWNVOTE A DOUBT <-----------------
+			if(parsedMsg.type == "downvote"){
+				
+			}
 
 			// ---------------> LEAVE ROOM <-----------------
 			if(parsedMsg.type == "leave"){
@@ -239,4 +261,12 @@ wss.on("connection", (socket) => {
 //          "email": "abc@gmail.com",
 //			"roomId" "123"
 //     }
+// }
+
+// {
+//   "type": "upvote",
+//   "payload": {
+//     "roomId": "abc123",
+//     "doubtId": 42
+//   }
 // }
