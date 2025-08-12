@@ -6,18 +6,11 @@ const doubtRouter = express.Router()
 const client = new PrismaClient();
 
 doubtRouter.get('/get-all', expressAsyncHandler(async (req, res) => {
-    const { email, roomId } = req.body;
-    const user = await client.users.findUnique({
-        where: {
-            email: email
-        }
-    })
-    const whereClause: any = { room: roomId };
-    if(user?.id !== undefined) {
-        whereClause.user_id = user.id;
-    }
+    const { roomId } = req.body;
     const userDoubts = await client.doubts.findMany({
-        where: whereClause
+        where: {
+            room: roomId
+        }
     })
 
     console.log(userDoubts)
