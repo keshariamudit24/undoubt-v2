@@ -221,43 +221,40 @@ wss.on("connection", (socket) => {
 				}))
 			}
 
+			// ---------------> LEAVE ROOM <-----------------
+			if(parsedMsg.type == "leave"){
+				
+				rooms.get(parsedMsg.payload.roomId)?.delete(socket)
+
+				socket.send(JSON.stringify({
+					msg: "user left the room"
+				}))
+			}
+
+			// ---------------> CLOSE ROOM <-----------------
+			if(parsedMsg.type == "close"){
+				await client.doubts.deleteMany({
+					where: { room: parsedMsg.payload.roomId }
+				})
+
+				rooms.delete(parsedMsg.payload.roomId);
+
+				socket.send(JSON.stringify({
+					msg: "room closed"
+				}))
+			}
+
 		} catch (error: any) {
-            socket.send(JSON.stringify({
-                type: "error",
-                payload: { message: error.message || "Invalid message format" }
-            }));
-        }
+			socket.send(JSON.stringify({
+				type: "error",
+				payload: { message: error.message || "Invalid message format" }
+			}));
+		}
 	})
 
 	// close the connection 
 	socket.on("close", async () => {
-		try {
-			const userInfo = socketUsers.get(socket);
-			if (userInfo) {
-				// Remove user from database
-				await client.doubts.deleteMany({
-					where: {
-						user_id: userInfo.userId
-					}
-				});
-
-				// Remove from room tracking
-				if (userInfo.roomId) {
-					rooms.get(userInfo.roomId)?.delete(socket);
-					// Clean up empty rooms
-					if (rooms.get(userInfo.roomId)?.size === 0) {
-						rooms.delete(userInfo.roomId);
-					}
-				}
-
-				// Clean up socket tracking
-				socketUsers.delete(socket);
-				
-				console.log(`User ${userInfo.email} disconnected and cleaned up from database`);
-			}
-		} catch (error) {
-			console.error("Error during socket cleanup:", error);
-		}
+		
 	})
 })
 
