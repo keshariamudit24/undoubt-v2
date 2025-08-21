@@ -103,18 +103,17 @@ wss.on("connection", (socket) => {
 			if(parsedMsg.type == "create"){
 				// just create a room in with this user in the doubts table
 				// this makes sure a user can "join" a room only if it has been "created" by someone  
-				
-				if(!rooms.has(parsedMsg.payload.roomId)){
-					rooms.set(parsedMsg.payload.roomId, new Set());
-				}
-				rooms.get(parsedMsg.payload.roomId)?.add(socket);
-
 				const user = await client.users.findUnique({
 					where: {
 						email: parsedMsg.payload.email
 					}
 				})
 				if(!user) return;
+				
+				if(!rooms.has(parsedMsg.payload.roomId)){
+					rooms.set(parsedMsg.payload.roomId, new Set());
+				}
+				rooms.get(parsedMsg.payload.roomId)?.add(socket);
 
 				// Store user info for this socket
 				socketUsers.set(socket, { 
