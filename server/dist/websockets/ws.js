@@ -15,6 +15,13 @@ const wss = new ws_1.WebSocketServer({ port: 8080 });
 const rooms = new Map();
 // Track socket to user mapping for cleanup
 const socketUsers = new Map();
+function broadcast(sockets, message) {
+    if (sockets) {
+        for (const clientSocket of sockets) {
+            clientSocket.send(JSON.stringify(message));
+        }
+    }
+}
 wss.on("connection", (socket) => {
     console.log("connection established");
     // server gets msg from client
@@ -72,10 +79,6 @@ wss.on("connection", (socket) => {
             if (parsedMsg.type == "create") {
                 // just create a room in with this user in the doubts table
                 // this makes sure a user can "join" a room only if it has been "created" by someone  
-                if (!rooms.has(parsedMsg.payload.roomId)) {
-                    rooms.set(parsedMsg.payload.roomId, new Set());
-                }
-                rooms.get(parsedMsg.payload.roomId)?.add(socket);
                 const user = await client.users.findUnique({
                     where: {
                         email: parsedMsg.payload.email
@@ -83,6 +86,10 @@ wss.on("connection", (socket) => {
                 });
                 if (!user)
                     return;
+                if (!rooms.has(parsedMsg.payload.roomId)) {
+                    rooms.set(parsedMsg.payload.roomId, new Set());
+                }
+                rooms.get(parsedMsg.payload.roomId)?.add(socket);
                 // Store user info for this socket
                 socketUsers.set(socket, {
                     userId: user.id,
@@ -125,35 +132,89 @@ wss.on("connection", (socket) => {
                 });
                 // broadcast that doubt to everyone present in the room 
                 const sockets = rooms.get(parsedMsg.payload.roomId); // you get the set of all sockets present in that room 
-                if (sockets) {
-                    for (const clientSocket of sockets) {
-                        clientSocket.send(JSON.stringify({
-                            type: "newDoubt",
-                            payload: parsedMsg.payload.msg
-                        }));
+                const message = {
+                    type: "new doubt triggered",
+                    payload: {
+                        doubt: parsedMsg.payload.msg
                     }
+                };
+                if (sockets) {
+                    broadcast(sockets, message);
                 }
+            }
+            // ---------------> UPVOTE A DOUBT <-----------------
+            if (parsedMsg.type == "upvote") {
+                // find the doubt and update the upvotes by + 1
+                await client.doubts.update({
+                    where: {
+                        id: parsedMsg.payload.doubtId,
+                        room: parsedMsg.payload.rooomId
+                    },
+                    data: {
+                        upvotes: {
+                            increment: 1
+                        }
+                    }
+                });
+                // broadcast the upvotes to everyone in the room
+                const sockets = rooms.get(parsedMsg.payload.roomId);
+                const message = {
+                    type: "upvote triggered",
+                    payload: {
+                        doubtId: parsedMsg.payload.doubtId
+                    }
+                };
+                if (sockets) {
+                    broadcast(sockets, message);
+                }
+                socket.send(JSON.stringify({
+                    msg: "upvoted successfully"
+                }));
+            }
+            // ---------------> DOWNVOTE A DOUBT <-----------------
+            if (parsedMsg.type == "downvote") {
+                // find the doubt and update the upvotes by - 1
+                await client.doubts.update({
+                    where: {
+                        id: parsedMsg.payload.doubtId,
+                        room: parsedMsg.payload.rooomId
+                    },
+                    data: {
+                        upvotes: {
+                            decrement: 1
+                        }
+                    }
+                });
+                // broadcast the upvotes to everyone in the room
+                const sockets = rooms.get(parsedMsg.payload.roomId);
+                const message = {
+                    type: "downvote triggered",
+                    payload: {
+                        doubtId: parsedMsg.payload.doubtId
+                    }
+                };
+                if (sockets) {
+                    broadcast(sockets, message);
+                }
+                socket.send(JSON.stringify({
+                    msg: "downvoted successfully"
+                }));
             }
             // ---------------> LEAVE ROOM <-----------------
             if (parsedMsg.type == "leave") {
-                const user = await client.users.findUnique({
-                    where: { email: parsedMsg.payload.email }
-                });
-                if (!user)
-                    return;
-                // Remove from database
-                await client.doubts.deleteMany({
-                    where: {
-                        user_id: user.id,
-                        room: parsedMsg.payload.roomId
-                    }
-                });
                 rooms.get(parsedMsg.payload.roomId)?.delete(socket);
-                // Clear socket user mapping
-                socketUsers.delete(socket);
                 socket.send(JSON.stringify({
-                    type: "user left",
-                    payload: { msg: "user successfully left the room" }
+                    msg: "user left the room"
+                }));
+            }
+            // ---------------> CLOSE ROOM <-----------------
+            if (parsedMsg.type == "close") {
+                await client.doubts.deleteMany({
+                    where: { room: parsedMsg.payload.roomId }
+                });
+                rooms.delete(parsedMsg.payload.roomId);
+                socket.send(JSON.stringify({
+                    msg: "room closed"
                 }));
             }
         }
@@ -164,32 +225,13 @@ wss.on("connection", (socket) => {
             }));
         }
     });
-    // close the connection 
-    socket.on("close", async () => {
-        try {
-            const userInfo = socketUsers.get(socket);
-            if (userInfo) {
-                // Remove user from database
-                await client.doubts.deleteMany({
-                    where: {
-                        user_id: userInfo.userId
-                    }
-                });
-                // Remove from room tracking
-                if (userInfo.roomId) {
-                    rooms.get(userInfo.roomId)?.delete(socket);
-                    // Clean up empty rooms
-                    if (rooms.get(userInfo.roomId)?.size === 0) {
-                        rooms.delete(userInfo.roomId);
-                    }
-                }
-                // Clean up socket tracking
-                socketUsers.delete(socket);
-                console.log(`User ${userInfo.email} disconnected and cleaned up from database`);
-            }
-        }
-        catch (error) {
-            console.error("Error during socket cleanup:", error);
+    socket.on("close", () => {
+        // triggers when there's any network error, user closes the tab,, user refreshes the site
+        // need to write clean-up logic 
+        const users = socketUsers.get(socket);
+        socketUsers.delete(socket);
+        if (users?.roomId) {
+            rooms.get(users.roomId)?.delete(socket);
         }
     });
 });
@@ -215,5 +257,12 @@ wss.on("connection", (socket) => {
 //          "email": "abc@gmail.com",
 //			"roomId" "123"
 //     }
+// }
+// {
+//   "type": "upvote/downvote",
+//   "payload": {
+//     "roomId": "abc123",
+//     "doubtId": 42
+//   }
 // }
 //# sourceMappingURL=ws.js.map
