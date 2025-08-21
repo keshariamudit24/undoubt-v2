@@ -185,6 +185,7 @@ wss.on("connection", (socket) => {
 					}
 				})
 
+				// broadcast the upvotes to everyone in the room
 				const sockets = rooms.get(parsedMsg.payload.roomId)
 				const message: Msg = {
 					type: "upvote triggered",
@@ -216,8 +217,20 @@ wss.on("connection", (socket) => {
 					}
 				})
 
+				// broadcast the upvotes to everyone in the room
+				const sockets = rooms.get(parsedMsg.payload.roomId)
+				const message: Msg = {
+					type: "downvote triggered",
+					payload: {
+						doubtId: parsedMsg.payload.doubtId 
+					}
+				}
+				if (sockets) {
+					broadcast(sockets, message)
+				}
+
 				socket.send(JSON.stringify({
-					msg: "upvoted successfully"
+					msg: "downvoted successfully"
 				}))
 			}
 
@@ -251,9 +264,7 @@ wss.on("connection", (socket) => {
 			}));
 		}
 	})
-
-	// close the connection 
-	socket.on("close", async () => {
+	socket.on("close", () => {
 		
 	})
 })
