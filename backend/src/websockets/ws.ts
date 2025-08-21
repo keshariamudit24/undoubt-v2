@@ -265,7 +265,13 @@ wss.on("connection", (socket) => {
 		}
 	})
 	socket.on("close", () => {
-		
+		// triggers when there's any network error, user closes the tab,, user refreshes the site
+		// need to write clean-up logic 
+		const users = socketUsers.get(socket)
+		socketUsers.delete(socket)
+		if (users?.roomId) {
+			rooms.get(users.roomId)?.delete(socket);
+		}
 	})
 })
 
