@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
+import NodesBg from "./components/NodesBg";
 
 // Steps with detailed descriptions
 const steps = [
@@ -122,46 +123,53 @@ export default function App() {
 		<div className="font-sans bg-zinc-900 text-zinc-100">
 			{/* Hero Section */}
 			<section
-				className="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-zinc-900 to-zinc-800 px-4"
+				className="relative min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-zinc-900 to-zinc-800 px-4 overflow-hidden"
 				id="hero"
 			>
-				<h1 className="text-5xl md:text-7xl font-bold mb-4 tracking-tight text-white drop-shadow-lg">
-					Undoubt
-				</h1>
-				<p className="text-xl md:text-2xl mb-8 text-zinc-300">
-					Ask freely. Learn fearlessly.
-				</p>
-				<a
-					href="#"
-					className="px-8 py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-lg font-semibold shadow-xl transition"
-				>
-					Login with College ID
-				</a>
-				<div className="mt-16 animate-bounce">
+				{/* Animated nodes background */}
+				<NodesBg
+					className="absolute top-0 left-0 w-full h-full z-0"
+					style={{ opacity: 0.18 }}
+				/>
+				<div className="relative z-10 flex flex-col items-center">
+					<h1 className="text-5xl md:text-7xl font-bold mb-4 tracking-tight text-white drop-shadow-lg">
+						Undoubt
+					</h1>
+					<p className="text-xl md:text-2xl mb-8 text-zinc-300">
+						Ask freely. Learn fearlessly.
+					</p>
 					<a
-						href="#about"
-						aria-label="Scroll down"
-						onClick={(e) => {
-							e.preventDefault();
-							document.getElementById("about")?.scrollIntoView({
-								behavior: "smooth",
-							});
-						}}
+						href="#"
+						className="px-8 py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-lg font-semibold shadow-xl transition"
 					>
-						<svg
-							className="w-8 h-8 text-cyan-400"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth={2}
-							viewBox="0 0 24 24"
-						>
-							<path
-								strokeLinecap="round"
-								strokeLinejoin="round"
-								d="M19 9l-7 7-7-7"
-							/>
-						</svg>
+						Login with College ID
 					</a>
+					<div className="mt-16 animate-bounce">
+						<a
+							href="#about"
+							aria-label="Scroll down"
+							onClick={(e) => {
+								e.preventDefault();
+								document.getElementById("about")?.scrollIntoView({
+									behavior: "smooth",
+								});
+							}}
+						>
+							<svg
+								className="w-8 h-8 text-cyan-400"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth={2}
+								viewBox="0 0 24 24"
+							>
+								<path
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									d="M19 9l-7 7-7-7"
+								/>
+							</svg>
+						</a>
+					</div>
 				</div>
 			</section>
 
