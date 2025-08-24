@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 const Dashboard: React.FC = () => {
-  const { user, signOut, loading } = useAuth();
+  const { user, backendUser, signOut, loading } = useAuth();
   const navigate = useNavigate();
   const [showEmail, setShowEmail] = useState(false);
 
@@ -92,10 +92,15 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-center">
+            <div className="flex justify-center space-x-3">
               <div className="inline-flex items-center px-3 py-1 rounded-full bg-green-900/30 border border-green-500/30">
                 <span className="text-green-400 text-sm">✓ College Email Verified</span>
               </div>
+              {backendUser && (
+                <div className="inline-flex items-center px-3 py-1 rounded-full bg-blue-900/30 border border-blue-500/30">
+                  <span className="text-blue-400 text-sm">✓ Database Registered</span>
+                </div>
+              )}
             </div>
           </div>
 
