@@ -216,7 +216,7 @@ wss.on("connection", (socket) => {
 					}
 				})
 
-				// broadcast the upvotes to everyone in the room
+				// broadcast the downvotes to everyone in the room
 				const sockets = rooms.get(parsedMsg.payload.roomId)
 				const message: Msg = {
 					type: "downvote triggered",

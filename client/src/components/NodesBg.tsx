@@ -1,9 +1,64 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 
-type Node = { x: number; y: number; vx: number; vy: number };
+type Node = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  // Add spatial grid properties for optimization
+  gridX: number;
+  gridY: number;
+  // Hover effect properties
+  isHovered: boolean;
+  glowIntensity: number;
+};
 
 function randomBetween(a: number, b: number) {
   return a + Math.random() * (b - a);
+}
+
+// Spatial grid for optimized neighbor finding
+class SpatialGrid {
+  private grid: Map<string, Node[]> = new Map();
+  private cellSize: number;
+
+  constructor(_width: number, _height: number, cellSize: number = 150) {
+    this.cellSize = cellSize;
+  }
+
+  clear() {
+    this.grid.clear();
+  }
+
+  addNode(node: Node) {
+    const gridX = Math.floor(node.x / this.cellSize);
+    const gridY = Math.floor(node.y / this.cellSize);
+    node.gridX = gridX;
+    node.gridY = gridY;
+
+    const key = `${gridX},${gridY}`;
+    if (!this.grid.has(key)) {
+      this.grid.set(key, []);
+    }
+    this.grid.get(key)!.push(node);
+  }
+
+  getNearbyNodes(node: Node): Node[] {
+    const nearby: Node[] = [];
+    const { gridX, gridY } = node;
+
+    // Check current cell and 8 surrounding cells
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const key = `${gridX + dx},${gridY + dy}`;
+        const cellNodes = this.grid.get(key);
+        if (cellNodes) {
+          nearby.push(...cellNodes);
+        }
+      }
+    }
+    return nearby;
+  }
 }
 
 export default function NodesBg({
@@ -15,109 +70,253 @@ export default function NodesBg({
   className?: string;
   style?: React.CSSProperties;
 }) {
-  const ref = useRef<SVGSVGElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const nodes = useRef<Node[]>([]);
+  const spatialGrid = useRef<SpatialGrid | null>(null);
+  const animationRef = useRef<number>();
+  const lastFrameTime = useRef<number>(0);
+  const mousePos = useRef<{ x: number; y: number }>({ x: -1000, y: -1000 });
+
   const [size, setSize] = useState({ width: 1920, height: 600 });
-  const [dynamicNodeCount, setDynamicNodeCount] = useState(nodeCount ?? 90);
+  const [dynamicNodeCount, setDynamicNodeCount] = useState(nodeCount ?? 60); // Reduced default
+
+  // Optimized resize handler with debouncing
+  const updateSizeAndNodes = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setSize({ width: rect.width, height: rect.height });
+
+      // Reduced node counts for better performance
+      let count = 90;
+      if (rect.width < 500) count = 20; // mobile
+      else if (rect.width < 800) count = 30; // small tablet
+      else if (rect.width < 1200) count = 40; // tablet/laptop
+      else if (rect.width < 1600) count = 50; // desktop
+      setDynamicNodeCount(nodeCount ?? count);
+    }
+  }, [nodeCount]);
 
   // Responsive: track parent size and adjust node count
   useEffect(() => {
-    function updateSizeAndNodes() {
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        setSize({ width: rect.width, height: rect.height });
-
-        // Responsive node count based on width
-        let count = 90;
-        if (rect.width < 500) count = 28; // mobile
-        else if (rect.width < 800) count = 40; // small tablet
-        else if (rect.width < 1200) count = 60; // tablet/laptop
-        else if (rect.width < 1600) count = 75; // desktop
-        setDynamicNodeCount(nodeCount ?? count);
-      }
-    }
     updateSizeAndNodes();
-    const ro = new (window as any).ResizeObserver(updateSizeAndNodes);
-    if (containerRef.current) ro.observe(containerRef.current);
-    window.addEventListener("resize", updateSizeAndNodes);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", updateSizeAndNodes);
-    };
-  }, [nodeCount]);
 
+    let timeoutId: NodeJS.Timeout;
+    const debouncedUpdate = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(updateSizeAndNodes, 100);
+    };
+
+    const ro = new ResizeObserver(debouncedUpdate);
+    if (containerRef.current) ro.observe(containerRef.current);
+    window.addEventListener("resize", debouncedUpdate);
+
+    return () => {
+      clearTimeout(timeoutId);
+      ro.disconnect();
+      window.removeEventListener("resize", debouncedUpdate);
+    };
+  }, [updateSizeAndNodes]);
+
+  // Initialize canvas and animation
   useEffect(() => {
-    // Initialize nodes to fill the area
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set canvas size with device pixel ratio for crisp rendering
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = size.width * dpr;
+    canvas.height = size.height * dpr;
+    ctx.scale(dpr, dpr);
+
+    // Initialize spatial grid
+    spatialGrid.current = new SpatialGrid(size.width, size.height);
+
+    // Initialize nodes
     nodes.current = Array.from({ length: dynamicNodeCount }, () => ({
-      x: randomBetween(0, size.width),
-      y: randomBetween(0, size.height),
-      vx: randomBetween(-1, 1),
-      vy: randomBetween(-1, 1),
+      x: randomBetween(20, size.width - 20),
+      y: randomBetween(20, size.height - 20),
+      vx: randomBetween(-0.8, 0.8), // Slightly slower for smoother animation
+      vy: randomBetween(-0.8, 0.8),
+      gridX: 0,
+      gridY: 0,
+      isHovered: false,
+      glowIntensity: 0,
     }));
 
-    let frame: number;
-    const animate = () => {
+    // Mouse tracking for hover effects
+    const handleMouseMove = (event: MouseEvent) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      mousePos.current = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
+    };
+
+    const handleMouseLeave = () => {
+      mousePos.current = { x: -1000, y: -1000 };
+    };
+
+    // Add mouse event listeners
+    if (canvas) {
+      canvas.addEventListener('mousemove', handleMouseMove);
+      canvas.addEventListener('mouseleave', handleMouseLeave);
+    }
+
+    // Animation loop with frame rate limiting
+    const animate = (currentTime: number) => {
+      // Limit to ~60fps
+      if (currentTime - lastFrameTime.current < 16) {
+        animationRef.current = requestAnimationFrame(animate);
+        return;
+      }
+      lastFrameTime.current = currentTime;
+
+      // Update node positions and hover states
       for (const node of nodes.current) {
         node.x += node.vx;
         node.y += node.vy;
-        if (node.x < 0 || node.x > size.width) node.vx *= -1;
-        if (node.y < 0 || node.y > size.height) node.vy *= -1;
+
+        // Bounce off walls with padding
+        if (node.x < 10 || node.x > size.width - 10) node.vx *= -1;
+        if (node.y < 10 || node.y > size.height - 10) node.vy *= -1;
+
+        // Keep nodes in bounds
+        node.x = Math.max(10, Math.min(size.width - 10, node.x));
+        node.y = Math.max(10, Math.min(size.height - 10, node.y));
+
+        // Check hover state
+        const distToMouse = Math.hypot(node.x - mousePos.current.x, node.y - mousePos.current.y);
+        const hoverRadius = 30; // Hover detection radius
+
+        if (distToMouse < hoverRadius) {
+          node.isHovered = true;
+          // Smooth glow intensity increase
+          node.glowIntensity = Math.min(1, node.glowIntensity + 0.1);
+        } else {
+          node.isHovered = false;
+          // Smooth glow intensity decrease
+          node.glowIntensity = Math.max(0, node.glowIntensity - 0.05);
+        }
       }
 
-      const svg = ref.current;
-      if (svg) {
-        while (svg.lastChild) svg.removeChild(svg.lastChild);
+      // Clear canvas
+      ctx.clearRect(0, 0, size.width, size.height);
 
-        // ✅ Add defs FIRST (glow filter)
-        const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-        const filter = document.createElementNS("http://www.w3.org/2000/svg", "filter");
-        filter.setAttribute("id", "glowNeon");
-        filter.innerHTML = `
-          <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#06b6d4" flood-opacity="1"/>
-          <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#06b6d4" flood-opacity="0.9"/>
-          <feDropShadow dx="0" dy="0" stdDeviation="16" flood-color="#06b6d4" flood-opacity="0.7"/>
-          <feDropShadow dx="0" dy="0" stdDeviation="32" flood-color="#06b6d4" flood-opacity="0.5"/>
-        `;
-        defs.appendChild(filter);
-        svg.appendChild(defs);
+      // Update spatial grid
+      spatialGrid.current!.clear();
+      for (const node of nodes.current) {
+        spatialGrid.current!.addNode(node);
+      }
 
-        // Draw lines
-        for (let i = 0; i < nodes.current.length; i++) {
-          for (let j = i + 1; j < nodes.current.length; j++) {
-            const a = nodes.current[i];
-            const b = nodes.current[j];
-            const dist = Math.hypot(a.x - b.x, a.y - b.y);
-            if (dist < 140) {
-              const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-              line.setAttribute("x1", a.x.toString());
-              line.setAttribute("y1", a.y.toString());
-              line.setAttribute("x2", b.x.toString());
-              line.setAttribute("y2", b.y.toString());
-              line.setAttribute("stroke", "#22d3ee"); // cyan-400
-              line.setAttribute("stroke-opacity", (0.13 + 0.22 * (1 - dist / 140)).toString());
-              line.setAttribute("stroke-width", "2");
-              svg.appendChild(line);
-            }
+      // Draw connections using spatial grid optimization
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 1.5;
+
+      const drawnConnections = new Set<string>();
+
+      for (const node of nodes.current) {
+        const nearbyNodes = spatialGrid.current!.getNearbyNodes(node);
+
+        for (const other of nearbyNodes) {
+          if (node === other) continue;
+
+          // Create unique connection ID to avoid drawing twice
+          const connectionId = node.x < other.x || (node.x === other.x && node.y < other.y)
+            ? `${node.x},${node.y}-${other.x},${other.y}`
+            : `${other.x},${other.y}-${node.x},${node.y}`;
+
+          if (drawnConnections.has(connectionId)) continue;
+          drawnConnections.add(connectionId);
+
+          const dist = Math.hypot(node.x - other.x, node.y - other.y);
+          if (dist < 120) { // Reduced connection distance
+            const opacity = 0.1 + 0.3 * (1 - dist / 120);
+            ctx.globalAlpha = opacity;
+            ctx.beginPath();
+            ctx.moveTo(node.x, node.y);
+            ctx.lineTo(other.x, other.y);
+            ctx.stroke();
           }
         }
-
-        // Draw glowing nodes
-        for (const node of nodes.current) {
-          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-          circle.setAttribute("cx", node.x.toString());
-          circle.setAttribute("cy", node.y.toString());
-          circle.setAttribute("r", "7");
-          circle.setAttribute("fill", "#06b6d4"); // cyan-500
-          circle.setAttribute("filter", "url(#glowNeon)");
-          svg.appendChild(circle);
-        }
       }
-      frame = requestAnimationFrame(animate);
+
+      // Draw nodes with enhanced glow effect
+      ctx.globalAlpha = 1;
+      for (const node of nodes.current) {
+        if (node.glowIntensity > 0) {
+          // Bright neon glow for hovered nodes
+          const glowSize = 20 + (node.glowIntensity * 15); // Dynamic glow size
+          const glowOpacity = node.glowIntensity * 0.8;
+
+          // Outer bright glow
+          const gradient = ctx.createRadialGradient(
+            node.x, node.y, 0,
+            node.x, node.y, glowSize
+          );
+          gradient.addColorStop(0, `rgba(0, 255, 255, ${glowOpacity})`); // Bright cyan
+          gradient.addColorStop(0.3, `rgba(34, 211, 238, ${glowOpacity * 0.7})`); // Cyan-400
+          gradient.addColorStop(0.6, `rgba(6, 182, 212, ${glowOpacity * 0.4})`); // Cyan-500
+          gradient.addColorStop(1, 'rgba(6, 182, 212, 0)'); // Fade to transparent
+
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, glowSize, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Intense inner glow
+          ctx.shadowColor = '#00ffff';
+          ctx.shadowBlur = 15 * node.glowIntensity;
+          ctx.fillStyle = `rgba(0, 255, 255, ${node.glowIntensity})`;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, 8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0; // Reset shadow
+        }
+
+        // Regular node appearance (always visible)
+        ctx.fillStyle = node.glowIntensity > 0 ? '#00ffff' : '#06b6d4';
+
+        // Outer glow layer
+        ctx.globalAlpha = 0.3 + (node.glowIntensity * 0.4);
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Middle layer
+        ctx.globalAlpha = 0.6 + (node.glowIntensity * 0.3);
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Core
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      animationRef.current = requestAnimationFrame(animate);
     };
-    animate();
-    return () => cancelAnimationFrame(frame);
-    // eslint-disable-next-line
+
+    animationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+      // Cleanup mouse event listeners
+      if (canvas) {
+        canvas.removeEventListener('mousemove', handleMouseMove);
+        canvas.removeEventListener('mouseleave', handleMouseLeave);
+      }
+    };
   }, [dynamicNodeCount, size.width, size.height]);
 
   return (
@@ -126,16 +325,14 @@ export default function NodesBg({
       className="absolute inset-0 w-full h-full"
       style={{ pointerEvents: "none" }}
     >
-      <svg
-        ref={ref}
-        width={size.width}
-        height={size.height}
+      <canvas
+        ref={canvasRef}
         className={className}
         style={{
           display: "block",
           width: "100%",
           height: "100%",
-          pointerEvents: "none",
+          pointerEvents: "auto", // Enable mouse events for hover detection
           ...style,
         }}
         aria-hidden="true"
