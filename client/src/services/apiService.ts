@@ -1,5 +1,16 @@
 /// <reference types="vite/client" />
+import axios, { AxiosResponse } from 'axios';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+
+// Create axios instance with default config
+const axiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
 export interface BackendUser {
   id: string;
@@ -12,6 +23,22 @@ export interface SignInResponse {
   user: BackendUser;
 }
 
+export interface BackendDoubt {
+  id: number;
+  doubt: string;
+  upvotes: number;
+  user_id: number;
+  room: string;
+  user: {
+    email: string;
+  };
+}
+
+export interface DoubtsResponse {
+  msg: string;
+  doubts: BackendDoubt[];
+}
+
 export interface ApiError {
   error: string;
 }
@@ -19,53 +46,60 @@ export interface ApiError {
 class ApiService {
   private async makeRequest<T>(
     endpoint: string,
-    options: RequestInit = {}
+    method: 'GET' | 'POST' = 'GET',
+    data?: any
   ): Promise<T> {
-    const url = `${API_BASE_URL}${endpoint}`;
-    
-    const config: RequestInit = {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-      ...options,
-    };
-
     try {
-      console.log('📤 Sending request to:', url);
-      console.log('📤 Request config:', config);
+      console.log('Sending request to:', `${API_BASE_URL}${endpoint}`);
+      console.log('Request method:', method);
+      console.log('Request data:', data);
 
-      const response = await fetch(url, config);
-      console.log('📥 Response status:', response.status);
+      const response = await axiosInstance.request<T>({
+        url: endpoint,
+        method,
+        data,
+      });
 
-      const data = await response.json();
-      console.log('📥 Response data:', data);
+      console.log('Response status:', response.status);
+      console.log('Response data:', response.data);
 
-      if (!response.ok) {
-        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      return response.data;
+    } catch (error) {
+      console.error('API request failed:', error);
+
+      if (axios.isAxiosError(error)) {
+        const errorMessage = error.response?.data?.error ||
+                           error.response?.data?.message ||
+                           error.message ||
+                           'Network request failed';
+        console.error('Error details:', {
+          endpoint,
+          method,
+          data,
+          status: error.response?.status,
+          message: errorMessage
+        });
+        throw new Error(errorMessage);
       }
 
-      return data;
-    } catch (error) {
-      console.error('❌ API request failed:', error);
-      console.error('❌ Error details:', {
-        url,
-        config,
-        error: error instanceof Error ? error.message : error
-      });
-      throw error;
+      throw new Error('Network request failed');
     }
   }
 
   // Sign in user to backend database
   async signInUser(name: string, email: string): Promise<SignInResponse> {
-    console.log('🌐 Making API request to backend:', { name, email });
-    console.log('🔗 API URL:', `${API_BASE_URL}/auth/signin`);
+    console.log('Making API request to backend:', { name, email });
+    console.log('API URL:', `${API_BASE_URL}/auth/signin`);
 
-    return this.makeRequest<SignInResponse>('/auth/signin', {
-      method: 'POST',
-      body: JSON.stringify({ name, email }),
-    });
+    return this.makeRequest<SignInResponse>('/auth/signin', 'POST', { name, email });
+  }
+
+  // Fetch all doubts for a room
+  async getRoomDoubts(roomId: string): Promise<DoubtsResponse> {
+    console.log('Fetching doubts for room:', roomId);
+    console.log('API URL:', `${API_BASE_URL}/doubts/get-all?roomId=${roomId}`);
+
+    return this.makeRequest<DoubtsResponse>(`/doubts/get-all?roomId=${encodeURIComponent(roomId)}`, 'GET');
   }
 }
 
