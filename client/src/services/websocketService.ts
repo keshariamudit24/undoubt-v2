@@ -167,6 +167,23 @@ class WebSocketService {
     this.messageHandlers.clear();
   }
 
+  // Check if user is admin of a room
+  checkAdminStatus(email: string, roomId: string) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error('WebSocket not connected');
+    }
+
+    const message = {
+      type: 'check-admin',
+      payload: {
+        email,
+        roomId
+      }
+    };
+
+    this.ws.send(JSON.stringify(message));
+  }
+
   // Utility method to generate room ID
   generateRoomId(): string {
     return Math.random().toString(36).substring(2, 8).toUpperCase();

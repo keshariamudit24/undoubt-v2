@@ -13,8 +13,10 @@ const client = new client_1.PrismaClient();
 const wss = new ws_1.WebSocketServer({ port: 8080 });
 // In-memory room tracking: roomId -> Set of sockets
 const rooms = new Map();
-// Track socket to user mapping for cleanup
+// Track socket to user mapping for cleanup user/socket -> details
 const socketUsers = new Map();
+// Track room admins: roomId -> admin email
+const roomAdmins = new Map();
 function broadcast(sockets, message) {
     if (sockets) {
         for (const clientSocket of sockets) {
@@ -71,6 +73,15 @@ wss.on("connection", (socket) => {
                     payload: { message: "Successfully joined the room" }
                 }));
             }
+            // ---------------> CHECK ADMIN <-----------------
+            if (parsedMsg.type == "check-admin") {
+                // Check if user is admin of the room
+                const isAdmin = roomAdmins.get(parsedMsg.payload.roomId) === parsedMsg.payload.email;
+                socket.send(JSON.stringify({
+                    type: "admin-status",
+                    payload: { isAdmin }
+                }));
+            }
             // ---------------> CREATE ROOM <-----------------
             if (parsedMsg.type == "create") {
                 // just create a room in with this user in the doubts table
@@ -92,16 +103,22 @@ wss.on("connection", (socket) => {
                     email: parsedMsg.payload.email,
                     roomId: parsedMsg.payload.roomId
                 });
+                // Track this user as the room admin
+                roomAdmins.set(parsedMsg.payload.roomId, parsedMsg.payload.email);
                 await client.doubts.create({
                     data: {
                         user_id: user.id,
                         room: parsedMsg.payload.roomId,
                     }
                 });
+                socket.send(JSON.stringify({
+                    type: "system",
+                    messageType: "success",
+                    payload: { message: "Room created successfully" }
+                }));
             }
             // ---------------> ASK DOUBT <-----------------
             if (parsedMsg.type == "ask-doubt") {
-                console.log("Processing ask-doubt message:", parsedMsg.payload);
                 // a user sends a doubt
                 // store the doubt in db
                 // check if the user exists in the users table
@@ -111,10 +128,8 @@ wss.on("connection", (socket) => {
                     }
                 });
                 if (!user) {
-                    console.log("User not found:", parsedMsg.payload.email);
                     return;
                 }
-                console.log("User found:", user.email);
                 // Check if the user is in the room (from socket mapping)
                 const userSocket = socketUsers.get(socket);
                 if (!userSocket || userSocket.roomId !== parsedMsg.payload.roomId) {
@@ -125,7 +140,6 @@ wss.on("connection", (socket) => {
                     return;
                 }
                 // store in db
-                console.log("Creating doubt in database...");
                 const createdDoubt = await client.doubts.create({
                     data: {
                         user_id: user.id,
@@ -133,10 +147,8 @@ wss.on("connection", (socket) => {
                         doubt: parsedMsg.payload.msg
                     }
                 });
-                console.log("Doubt created with ID:", createdDoubt.id);
                 // broadcast that doubt to everyone present in the room
                 const sockets = rooms.get(parsedMsg.payload.roomId); // you get the set of all sockets present in that room
-                console.log("Broadcasting to", sockets?.size || 0, "sockets in room", parsedMsg.payload.roomId);
                 const message = {
                     type: "new doubt triggered",
                     payload: {
@@ -145,13 +157,8 @@ wss.on("connection", (socket) => {
                         doubtId: createdDoubt.id // Include the actual database ID
                     }
                 };
-                console.log("Broadcasting message:", message);
                 if (sockets) {
                     broadcast(sockets, message);
-                    console.log("Message broadcasted to all sockets");
-                }
-                else {
-                    console.log("No sockets found in room");
                 }
             }
             // ---------------> UPVOTE A DOUBT <-----------------
