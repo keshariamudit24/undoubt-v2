@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import toast from 'react-hot-toast';
 import { authService, AuthUser } from '../services/authService';
 import { apiService, BackendUser } from '../services/apiService';
 
@@ -39,6 +40,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Check if it's a college email
       if (user.email && !authService.isCollegeEmail(user.email)) {
         await authService.signOut();
+        toast.error('Please login with your college mail id', {
+          style: {
+            background: '#18181b',
+            color: '#f4f4f5',
+            border: '1px solid #ef4444',
+          },
+          iconTheme: {
+            primary: '#ef4444',
+            secondary: '#18181b',
+          },
+        });
         throw new Error('Please use your college email to sign in');
       }
 
@@ -56,8 +68,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } catch (backendError) {
         console.error('❌ Backend sign-in failed:', backendError);
         // Don't throw here - allow Firebase auth to succeed even if backend fails
-        // You can show a warning to the user if needed
-        alert('Warning: Failed to register in database. Please try again.');
+        toast.error('Failed to register in database. Please try again.', {
+          style: {
+            background: '#18181b',
+            color: '#f4f4f5',
+            border: '1px solid #f59e0b',
+          },
+          iconTheme: {
+            primary: '#f59e0b',
+            secondary: '#18181b',
+          },
+        });
       }
 
       setUser(user);

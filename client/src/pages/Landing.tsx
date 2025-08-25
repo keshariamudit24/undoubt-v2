@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
+import toast from 'react-hot-toast';
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import NodesBg from "../components/NodesBg";
@@ -123,7 +124,20 @@ const Landing: React.FC = () => {
 			// Navigation will happen automatically due to useEffect above
 		} catch (error: any) {
 			console.error('Login error:', error);
-			alert(error.message || 'Failed to sign in. Please try again.');
+			// Don't show toast here if it's a college email error, as it's already shown in AuthContext
+			if (!error.message?.includes('college email')) {
+				toast.error(error.message || 'Failed to sign in. Please try again.', {
+					style: {
+						background: '#18181b',
+						color: '#f4f4f5',
+						border: '1px solid #ef4444',
+					},
+					iconTheme: {
+						primary: '#ef4444',
+						secondary: '#18181b',
+					},
+				});
+			}
 		} finally {
 			setIsSigningIn(false);
 		}
@@ -239,10 +253,10 @@ const Landing: React.FC = () => {
 					{benefits.map((benefit, idx) => (
 						<div
 							key={benefit.title}
-							className="p-6 rounded-xl bg-zinc-900 border border-cyan-500/20 hover:border-cyan-400 transition-colors
+							className="p-6 rounded-xl bg-zinc-900 border border-cyan-500/20 hover:border-cyan-400
 					shadow-[0_2px_12px_0_rgba(34,211,238,0.10)]
 					hover:shadow-[0_0_24px_4px_rgba(34,211,238,0.45)]
-					transition-shadow duration-300"
+					transition-all duration-300"
 						>
 							<h3 className="text-xl font-semibold mb-2 text-cyan-400">
 								{benefit.title}

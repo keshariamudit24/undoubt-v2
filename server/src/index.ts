@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 
 // middlewares
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174'], // Allow Vite dev server
+  origin: ['http://localhost:5173', 'http://localhost:5174'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -30,8 +30,8 @@ app.use((err: any, _req: any, res: any, _next: any) => {
 });
 
 const server = app.listen(PORT, () => {
-    console.log(`🚀 Server listening on port ${PORT}`)
-    console.log(`📡 CORS enabled for: http://localhost:5173, http://localhost:5174`)
+    console.log(`Server listening on port ${PORT}`)
+    console.log(`CORS enabled for: http://localhost:5173, http://localhost:5174`)
 })
 
 // Keep the process alive and handle graceful shutdown
