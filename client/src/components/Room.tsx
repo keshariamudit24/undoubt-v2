@@ -14,6 +14,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
   const { user } = useAuth();
   const [doubts, setDoubts] = useState<Doubt[]>([]);
   const [visibleEmails, setVisibleEmails] = useState<Set<number>>(new Set());
+  const [likedDoubts, setLikedDoubts] = useState<Set<number>>(new Set());
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [newDoubt, setNewDoubt] = useState('');
   const [isConnected, setIsConnected] = useState(false);
@@ -67,9 +68,13 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
         });
 
         wsService.onMessage('new doubt triggered', (data) => {
+          console.log('🔔 New doubt triggered:', data);
+          console.log('👤 Current user email:', user?.email);
+          console.log('📧 Doubt user email:', data.userEmail);
+
           // Add new doubt to the list
           const newDoubt: Doubt = {
-            id: Date.now(), // Temporary ID
+            id: data.doubtId || Date.now(), // Use actual database ID from backend
             doubt: data.doubt,
             upvotes: 0,
             user_id: 0,
@@ -77,6 +82,27 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
             room: roomId,
           };
           setDoubts(prev => [...prev, newDoubt]);
+
+          // Show toast notification for new doubt
+          console.log('🔍 Checking if should show toast...');
+          console.log('📧 data.userEmail:', data.userEmail);
+          console.log('👤 user?.email:', user?.email);
+          console.log('🔄 Are they different?', data.userEmail !== user?.email);
+
+          // Always show toast for debugging - remove the email check temporarily
+          toast.success('New doubt posted!', {
+            style: {
+              background: '#18181b',
+              color: '#f4f4f5',
+              border: '1px solid #06b6d4',
+            },
+            iconTheme: {
+              primary: '#06b6d4',
+              secondary: '#18181b',
+            },
+          });
+
+          console.log('✅ Toast should have been triggered');
         });
 
         wsService.onMessage('upvote triggered', (data) => {
@@ -112,17 +138,41 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
 
   const handleSubmitDoubt = () => {
     if (newDoubt.trim() && user?.email) {
+      console.log('📤 Submitting doubt:', newDoubt.trim());
       wsService.askDoubt(user.email, roomId, newDoubt.trim());
       setNewDoubt('');
+
+      // Test toast to verify toast system is working
+      toast.success('Doubt submitted!', {
+        style: {
+          background: '#18181b',
+          color: '#f4f4f5',
+          border: '1px solid #22c55e',
+        },
+        iconTheme: {
+          primary: '#22c55e',
+          secondary: '#18181b',
+        },
+      });
     }
   };
 
-  const handleUpvote = (doubtId: number) => {
-    wsService.upvoteDoubt(roomId, doubtId);
-  };
+  const handleToggleLike = (doubtId: number) => {
+    const isCurrentlyLiked = likedDoubts.has(doubtId);
 
-  const handleDownvote = (doubtId: number) => {
-    wsService.downvoteDoubt(roomId, doubtId);
+    if (isCurrentlyLiked) {
+      // User is unliking - trigger downvote
+      wsService.downvoteDoubt(roomId, doubtId);
+      setLikedDoubts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(doubtId);
+        return newSet;
+      });
+    } else {
+      // User is liking - trigger upvote
+      wsService.upvoteDoubt(roomId, doubtId);
+      setLikedDoubts(prev => new Set(prev).add(doubtId));
+    }
   };
 
   const toggleEmailVisibility = (doubtId: number) => {
@@ -197,16 +247,28 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
             {isAdmin && (
               <button
                 onClick={handleCloseRoom}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors"
+                className="group relative px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl hover:shadow-red-500/25 border border-red-500/20 hover:border-red-400/40"
               >
-                Close Room
+                <div className="absolute inset-0 bg-gradient-to-r from-red-600/20 to-red-700/20 rounded-xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+                <span className="relative flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Close Room
+                </span>
               </button>
             )}
             <button
               onClick={handleLeaveRoom}
-              className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg font-semibold transition-colors"
+              className="group relative px-6 py-3 bg-gradient-to-r from-zinc-700 to-zinc-800 hover:from-zinc-600 hover:to-zinc-700 text-white rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl border border-zinc-600/50 hover:border-zinc-500/70"
             >
-              Leave Room
+              <div className="absolute inset-0 bg-gradient-to-r from-zinc-700/20 to-zinc-800/20 rounded-xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+              <span className="relative flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Leave Room
+              </span>
             </button>
           </div>
         </div>
@@ -215,38 +277,65 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
           {/* Left Column - Room Info & QR Code (Admin only) */}
           {isAdmin && (
             <div className="lg:col-span-1">
-              <div className="bg-zinc-800 rounded-2xl border border-zinc-700 p-6 mb-6">
-                <h2 className="text-xl font-semibold text-white mb-4">Share Room</h2>
-                
-                {/* QR Code */}
-                <div className="text-center mb-4">
-                  {qrCodeUrl && (
-                    <img 
-                      src={qrCodeUrl} 
-                      alt="Room QR Code" 
-                      className="mx-auto rounded-lg border-2 border-cyan-500"
-                    />
-                  )}
-                  <p className="text-sm text-zinc-400 mt-2">
-                    Scan to join the room
-                  </p>
-                </div>
+              <div className="relative bg-zinc-800 rounded-2xl border-2 border-cyan-500/30 p-6 mb-6 shadow-lg shadow-cyan-500/10">
+                {/* Neon glow effect */}
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-cyan-500/10 to-blue-500/10 blur-sm"></div>
+                <div className="relative">
+                  <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                    <svg className="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                    </svg>
+                    Share Room
+                  </h2>
 
-                {/* Share URL */}
-                <button
-                  onClick={copyJoinUrl}
-                  className="w-full py-2 px-4 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-semibold transition-colors"
-                >
-                  Copy Join URL
-                </button>
+                  {/* QR Code */}
+                  <div className="text-center mb-4">
+                    {qrCodeUrl && (
+                      <div className="relative inline-block">
+                        <img
+                          src={qrCodeUrl}
+                          alt="Room QR Code"
+                          className="mx-auto rounded-lg border-2 border-cyan-500 shadow-lg shadow-cyan-500/20"
+                        />
+                        <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-cyan-500/10 to-blue-500/10 blur-sm"></div>
+                      </div>
+                    )}
+                    <p className="text-sm text-zinc-400 mt-2">
+                      Scan to join the room
+                    </p>
+                  </div>
+
+                  {/* Share URL */}
+                  <button
+                    onClick={copyJoinUrl}
+                    className="group relative w-full py-3 px-4 bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl hover:shadow-cyan-500/25"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-cyan-600/20 to-blue-700/20 rounded-xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+                    <span className="relative flex items-center justify-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      Copy Join URL
+                    </span>
+                  </button>
+                </div>
               </div>
 
               {/* Admin Info */}
-              <div className="bg-zinc-800 rounded-2xl border border-zinc-700 p-6">
-                <h3 className="text-white font-medium mb-2">Admin Controls</h3>
-                <p className="text-sm text-zinc-400">
-                  Click the eye icon next to each doubt to reveal/hide the user's email address
-                </p>
+              <div className="relative bg-zinc-800 rounded-2xl border border-cyan-500/20 p-6 shadow-lg">
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-cyan-500/5 to-blue-500/5 blur-sm"></div>
+                <div className="relative">
+                  <h3 className="text-white font-medium mb-2 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Admin Controls
+                  </h3>
+                  <p className="text-sm text-zinc-400">
+                    Click the eye icon next to each doubt to reveal/hide the user's email address
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -255,33 +344,49 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
           <div className={`${isAdmin ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
             {/* Submit Doubt (Non-admin) */}
             {!isAdmin && (
-              <div className="bg-zinc-800 rounded-2xl border border-zinc-700 p-6 mb-6">
-                <h2 className="text-xl font-semibold text-white mb-4">Ask a Doubt</h2>
-                <div className="flex gap-3">
-                  <input
-                    type="text"
-                    value={newDoubt}
-                    onChange={(e) => setNewDoubt(e.target.value)}
-                    placeholder="Type your doubt here..."
-                    className="flex-1 px-4 py-3 bg-zinc-700 border border-zinc-600 rounded-xl text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                    onKeyDown={(e) => e.key === 'Enter' && handleSubmitDoubt()}
-                  />
-                  <button
-                    onClick={handleSubmitDoubt}
-                    disabled={!newDoubt.trim()}
-                    className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:from-zinc-600 disabled:to-zinc-700 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all duration-300"
-                  >
-                    Submit
-                  </button>
+              <div className="relative bg-zinc-800 rounded-2xl border-2 border-cyan-500/30 p-6 mb-6 shadow-lg shadow-cyan-500/10">
+                {/* Neon glow effect */}
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-cyan-500/10 to-blue-500/10 blur-sm"></div>
+                <div className="relative">
+                  <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                    <svg className="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Ask a Doubt
+                  </h2>
+                  <div className="flex gap-3">
+                    <input
+                      type="text"
+                      value={newDoubt}
+                      onChange={(e) => setNewDoubt(e.target.value)}
+                      placeholder="Type your doubt here..."
+                      className="flex-1 px-4 py-3 bg-zinc-700 border border-zinc-600 rounded-xl text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all duration-200 hover:border-zinc-500"
+                      onKeyDown={(e) => e.key === 'Enter' && handleSubmitDoubt()}
+                    />
+                    <button
+                      onClick={handleSubmitDoubt}
+                      disabled={!newDoubt.trim()}
+                      className="group relative px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:from-zinc-600 disabled:to-zinc-700 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all duration-300 transform hover:scale-105 disabled:hover:scale-100 shadow-lg hover:shadow-xl hover:shadow-cyan-500/25"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 to-blue-600/20 rounded-xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+                      <span className="relative">Submit</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
 
             {/* Doubts List */}
-            <div className="bg-zinc-800 rounded-2xl border border-zinc-700 p-6">
-              <h2 className="text-xl font-semibold text-white mb-4">
-                Doubts ({doubts.length})
-              </h2>
+            <div className="relative bg-zinc-800 rounded-2xl border-2 border-cyan-500/30 p-6 shadow-lg shadow-cyan-500/10">
+              {/* Neon glow effect */}
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-cyan-500/10 to-blue-500/10 blur-sm"></div>
+              <div className="relative">
+                <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                  <svg className="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Doubts ({doubts.length})
+                </h2>
               
               {doubts.length === 0 ? (
                 <div className="text-center py-8">
@@ -295,7 +400,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
                   {doubts.map((doubt) => (
                     <div
                       key={doubt.id}
-                      className="bg-zinc-700 rounded-xl p-4 border border-zinc-600"
+                      className="relative bg-zinc-700 rounded-xl p-4 border border-cyan-500/20 hover:border-cyan-400/40 transition-all duration-300 shadow-lg hover:shadow-cyan-500/10"
                     >
                       <div className="flex justify-between items-start mb-2">
                         <p className="text-white flex-1">{doubt.doubt}</p>
@@ -319,25 +424,34 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
                               )}
                             </button>
                           )}
-                          <button
-                            onClick={() => handleUpvote(doubt.id)}
-                            className="text-zinc-400 hover:text-green-400 transition-colors"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                            </svg>
-                          </button>
-                          <span className="text-zinc-300 font-medium min-w-[2rem] text-center">
-                            {doubt.upvotes}
-                          </span>
-                          <button
-                            onClick={() => handleDownvote(doubt.id)}
-                            className="text-zinc-400 hover:text-red-400 transition-colors"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleToggleLike(doubt.id)}
+                              className={`transition-colors ${
+                                likedDoubts.has(doubt.id)
+                                  ? 'text-cyan-400 hover:text-cyan-300'
+                                  : 'text-zinc-400 hover:text-cyan-400'
+                              }`}
+                              title={likedDoubts.has(doubt.id) ? 'Unlike' : 'Like'}
+                            >
+                              <svg
+                                className="w-5 h-5"
+                                fill={likedDoubts.has(doubt.id) ? 'currentColor' : 'none'}
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L9 7m5 3v4M9 7H7l-3-3M9 7l.6-2.4A2 2 0 0111.6 3h.8A2 2 0 0114 5v2m-5 2H7l-3 3"
+                                />
+                              </svg>
+                            </button>
+                            <span className="text-zinc-300 font-medium min-w-[2rem] text-center">
+                              {doubt.upvotes}
+                            </span>
+                          </div>
                         </div>
                       </div>
                       {/* Show email only if admin has toggled it visible for this specific doubt */}
@@ -350,6 +464,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
                   ))}
                 </div>
               )}
+              </div>
             </div>
           </div>
         </div>

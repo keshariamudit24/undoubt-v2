@@ -27,6 +27,7 @@ interface NewMsg {
   payload: {
     doubt: string;
     userEmail?: string;
+    doubtId?: number;
   };
 }
 
@@ -129,6 +130,7 @@ wss.on("connection", (socket) => {
 
 			// ---------------> ASK DOUBT <-----------------
 			if(parsedMsg.type == "ask-doubt"){
+				console.log("Processing ask-doubt message:", parsedMsg.payload);
 				// a user sends a doubt
 				// store the doubt in db
 				// check if the user exists in the users table
@@ -137,7 +139,11 @@ wss.on("connection", (socket) => {
 						email: parsedMsg.payload.email
 					}
 				});
-				if (!user) return;
+				if (!user) {
+					console.log("User not found:", parsedMsg.payload.email);
+					return;
+				}
+				console.log("User found:", user.email);
 
 				// Check if the user is in the room (from socket mapping)
 				const userSocket = socketUsers.get(socket);
@@ -150,25 +156,35 @@ wss.on("connection", (socket) => {
 				}
 
 				// store in db
-				await client.doubts.create({
+				console.log("Creating doubt in database...");
+				const createdDoubt = await client.doubts.create({
 					data: {
 						user_id: user.id,
 						room: parsedMsg.payload.roomId,
 						doubt: parsedMsg.payload.msg
 					}
 				})
+				console.log("Doubt created with ID:", createdDoubt.id);
 
 				// broadcast that doubt to everyone present in the room
 				const sockets = rooms.get(parsedMsg.payload.roomId) // you get the set of all sockets present in that room
+				console.log("Broadcasting to", sockets?.size || 0, "sockets in room", parsedMsg.payload.roomId);
+
 				const message: NewMsg = {
 					type: "new doubt triggered",
 					payload: {
 						doubt: parsedMsg.payload.msg,
-						userEmail: parsedMsg.payload.email // Include user email in broadcast
+						userEmail: parsedMsg.payload.email, // Include user email in broadcast
+						doubtId: createdDoubt.id // Include the actual database ID
 					}
 				}
+				console.log("Broadcasting message:", message);
+
 				if(sockets) {
 					broadcast(sockets, message)
+					console.log("Message broadcasted to all sockets");
+				} else {
+					console.log("No sockets found in room");
 				}
 			}
 
@@ -177,8 +193,7 @@ wss.on("connection", (socket) => {
 				// find the doubt and update the upvotes by + 1
 				await client.doubts.update({
 					where: {
-						id: parsedMsg.payload.doubtId,
-						room: parsedMsg.payload.rooomId
+						id: parsedMsg.payload.doubtId
 					},
 					data: {
 						upvotes: {
@@ -209,8 +224,7 @@ wss.on("connection", (socket) => {
 				// find the doubt and update the upvotes by - 1
 				await client.doubts.update({
 					where: {
-						id: parsedMsg.payload.doubtId,
-						room: parsedMsg.payload.rooomId
+						id: parsedMsg.payload.doubtId
 					},
 					data: {
 						upvotes: {
