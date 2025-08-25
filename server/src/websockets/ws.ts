@@ -26,6 +26,7 @@ interface NewMsg {
   type: string;
   payload: {
     doubt: string;
+    userEmail?: string;
   };
 }
 
@@ -79,18 +80,14 @@ wss.on("connection", (socket) => {
 				if(!user) return;
 
 				// Store user info for this socket
-				socketUsers.set(socket, { 
-					userId: user.id, 
-					email: parsedMsg.payload.email, 
-					roomId: parsedMsg.payload.roomId 
+				socketUsers.set(socket, {
+					userId: user.id,
+					email: parsedMsg.payload.email,
+					roomId: parsedMsg.payload.roomId
 				});
 
-				await client.doubts.create({
-					data: {
-						user_id: user.id,
-						room: parsedMsg.payload.roomId
-					}
-				});
+				// Don't create a doubts entry just for joining - only create when asking doubts
+				// The doubts table should only contain actual doubts, not room memberships
 
 				socket.send(JSON.stringify({
                     type: "system",
@@ -134,19 +131,24 @@ wss.on("connection", (socket) => {
 			if(parsedMsg.type == "ask-doubt"){
 				// a user sends a doubt
 				// store the doubt in db
-				  // check if the user exists in the doubts table
+				// check if the user exists in the users table
 				const user = await client.users.findUnique({
 					where: {
 						email: parsedMsg.payload.email
 					}
 				});
 				if (!user) return;
-				const currUser = await client.doubts.findFirst({
-					where: {
-						user_id: user.id,
-					}
-				});
-				if(!currUser) return;
+
+				// Check if the user is in the room (from socket mapping)
+				const userSocket = socketUsers.get(socket);
+				if (!userSocket || userSocket.roomId !== parsedMsg.payload.roomId) {
+					socket.send(JSON.stringify({
+						type: "error",
+						payload: { msg: "You are not in this room" }
+					}));
+					return;
+				}
+
 				// store in db
 				await client.doubts.create({
 					data: {
@@ -156,12 +158,13 @@ wss.on("connection", (socket) => {
 					}
 				})
 
-				// broadcast that doubt to everyone present in the room 
-				const sockets = rooms.get(parsedMsg.payload.roomId) // you get the set of all sockets present in that room 
+				// broadcast that doubt to everyone present in the room
+				const sockets = rooms.get(parsedMsg.payload.roomId) // you get the set of all sockets present in that room
 				const message: NewMsg = {
 					type: "new doubt triggered",
 					payload: {
-						doubt: parsedMsg.payload.msg 
+						doubt: parsedMsg.payload.msg,
+						userEmail: parsedMsg.payload.email // Include user email in broadcast
 					}
 				}
 				if(sockets) {
