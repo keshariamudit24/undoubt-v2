@@ -41,10 +41,10 @@ class WebSocketService {
   private persistRoomState() {
     if (this.currentRoom) {
       localStorage.setItem('undoubt_room_state', JSON.stringify(this.currentRoom));
-      console.log('💾 Room state persisted:', this.currentRoom);
+      console.log('Room state persisted:', this.currentRoom);
     } else {
       localStorage.removeItem('undoubt_room_state');
-      console.log('🗑️ Room state cleared from localStorage');
+      console.log('Room state cleared from localStorage');
     }
   }
 
@@ -54,7 +54,7 @@ class WebSocketService {
       const storedRoom = localStorage.getItem('undoubt_room_state');
       if (storedRoom) {
         this.currentRoom = JSON.parse(storedRoom);
-        console.log('📂 Room state loaded from localStorage:', this.currentRoom);
+        console.log('Room state loaded from localStorage:', this.currentRoom);
       }
     } catch (error) {
       console.error('Failed to load persisted room state:', error);
@@ -75,7 +75,7 @@ class WebSocketService {
         this.ws = new WebSocket(WS_URL);
 
         this.ws.onopen = () => {
-          console.log('✅ WebSocket connected');
+          console.log('WebSocket connected');
           this.reconnectAttempts = 0;
           
           // Note: We're no longer automatically rejoining rooms here
@@ -94,27 +94,27 @@ class WebSocketService {
         this.ws.onmessage = (event) => {
           try {
             const message: WebSocketMessage = JSON.parse(event.data);
-            console.log('📥 Received message:', message);
+            console.log('Received message:', message);
             
             const handler = this.messageHandlers.get(message.type);
             if (handler) {
               handler(message.payload);
             } else {
               // Don't throw errors for unhandled message types, just log them
-              console.warn(`⚠️ No handler registered for message type: ${message.type}`, message);
+              console.warn(`No handler registered for message type: ${message.type}`, message);
             }
           } catch (error) {
-            console.error('❌ Error parsing WebSocket message:', error);
+            console.error('Error parsing WebSocket message:', error);
           }
         };
 
         this.ws.onclose = () => {
-          console.log('🔌 WebSocket disconnected');
+          console.log('WebSocket disconnected');
           this.attemptReconnect();
         };
 
         this.ws.onerror = (error) => {
-          console.error('❌ WebSocket error:', error);
+          console.error('WebSocket error:', error);
           reject(error);
         };
       } catch (error) {
@@ -126,15 +126,15 @@ class WebSocketService {
   private attemptReconnect() {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
-      console.log(`🔄 Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
       
       setTimeout(() => {
         this.connect().catch(error => {
-          console.error('❌ Reconnection failed:', error);
+          console.error('Reconnection failed:', error);
         });
       }, this.reconnectDelay * this.reconnectAttempts);
     } else {
-      console.error('❌ Maximum reconnection attempts reached');
+      console.error('Maximum reconnection attempts reached');
     }
   }
 
@@ -156,10 +156,10 @@ class WebSocketService {
 
   private send(message: WebSocketMessage) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      console.log('📤 Sending message:', message);
+      console.log('Sending message:', message);
       this.ws.send(JSON.stringify(message));
     } else {
-      console.error('❌ WebSocket not connected');
+      console.error('WebSocket not connected');
       throw new Error('WebSocket not connected');
     }
   }
@@ -236,7 +236,7 @@ class WebSocketService {
   // Event handlers
   onMessage(type: string, handler: (data: any) => void) {
     // Debug log to verify handler registration
-    console.log(`📝 Registering handler for message type: ${type}`);
+    console.log(`Registering handler for message type: ${type}`);
     this.messageHandlers.set(type, handler);
   }
 
