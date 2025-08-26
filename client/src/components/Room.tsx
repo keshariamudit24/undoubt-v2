@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import QRCode from 'qrcode';
 import toast from 'react-hot-toast';
 import { wsService, Doubt } from '../services/websocketService';
@@ -151,36 +151,80 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
     };
     
     const connectAndJoin = async () => {
-      try {
-        // Check if already connected, if not connect
-        if (!wsService.isConnected()) {
-          await wsService.connect();
-        }
-        setIsConnected(true);
-        
-        // Set up message handlers
-        setupMessageHandlers();
-
-        // Critical fix: Always rejoin the room after page refresh to re-register the socket on the server
-        const email = user?.email || '';
-        if (email) {
-          if (isAdmin) {
-            console.log('🔄 Explicitly re-creating room as admin after page load:', roomId);
-            wsService.createRoom(email, roomId);
-          } else {
-            console.log('🔄 Explicitly re-joining room after page load:', roomId);
-            wsService.joinRoom(email, roomId);
+      let connectionAttempts = 0;
+      const maxAttempts = 3;
+      
+      const attemptConnection = async () => {
+        try {
+          // Check if already connected, if not connect
+          if (!wsService.isConnected()) {
+            await wsService.connect();
           }
+          setIsConnected(true);
+          
+          // Set up message handlers
+          setupMessageHandlers();
+
+          // Critical fix: Always rejoin the room after page refresh to re-register the socket on the server
+          const email = user?.email || '';
+          if (email) {
+            if (isAdmin) {
+              console.log('🔄 Explicitly re-creating room as admin after page load:', roomId);
+              wsService.createRoom(email, roomId);
+            } else {
+              console.log('🔄 Explicitly re-joining room after page load:', roomId);
+              wsService.joinRoom(email, roomId);
+            }
+          }
+
+          // Fetch previous doubts after joining room
+          await fetchPreviousDoubts();
+          
+          return true; // Connection successful
+
+        } catch (error) {
+          console.error(`Connection attempt ${connectionAttempts + 1}/${maxAttempts} failed:`, error);
+          
+          if (connectionAttempts < maxAttempts - 1) {
+            // If not the last attempt, wait and try again
+            connectionAttempts++;
+            console.log(`Retrying connection in 1 second... (Attempt ${connectionAttempts + 1}/${maxAttempts})`);
+            
+            // Wait 1 second before trying again
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return attemptConnection();
+          }
+          
+          // Only show error toast on final failed attempt
+          console.error('All connection attempts failed');
+          setIsConnected(false);
+          
+          // Show a more accurate error message
+          const errorMsg = error instanceof Error 
+            ? error.message 
+            : 'Unable to connect to room';
+            
+          if (errorMsg.includes('not in this room')) {
+            toast.error("You're not in this room. Rejoining...");
+            // Try one last rejoining attempt
+            try {
+              const email = user?.email || '';
+              if (email) {
+                wsService.joinRoom(email, roomId);
+                return true;
+              }
+            } catch (e) {
+              console.error("Final rejoin attempt failed:", e);
+            }
+          } else {
+            toast.error('Connection issue. Try refreshing the page.');
+          }
+          
+          return false;
         }
-
-        // Fetch previous doubts after joining room
-        await fetchPreviousDoubts();
-
-      } catch (error) {
-        console.error('Failed to setup room:', error);
-        setIsConnected(false);
-        toast.error('Connection failed. Please try again.');
-      }
+      };
+      
+      return attemptConnection();
     };
 
     // Initial setup
@@ -225,6 +269,36 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
       }
     }
   };
+
+  // Load liked doubts from localStorage on component mount
+  useEffect(() => {
+    const loadLikedDoubts = () => {
+      try {
+        const storedLikes = localStorage.getItem(`undoubt_likes_${roomId}_${user?.email}`);
+        if (storedLikes) {
+          const likedIds = JSON.parse(storedLikes);
+          setLikedDoubts(new Set(likedIds));
+          console.log('📋 Restored liked doubts from localStorage:', likedIds);
+        }
+      } catch (error) {
+        console.error('Failed to load liked doubts from localStorage:', error);
+      }
+    };
+    
+    if (user?.email) {
+      loadLikedDoubts();
+    }
+  }, [roomId, user?.email]);
+
+  // Save liked doubts to localStorage whenever they change
+  useEffect(() => {
+    if (user?.email && likedDoubts.size > 0) {
+      localStorage.setItem(
+        `undoubt_likes_${roomId}_${user?.email}`, 
+        JSON.stringify(Array.from(likedDoubts))
+      );
+    }
+  }, [likedDoubts, roomId, user?.email]);
 
   const handleToggleLike = (doubtId: number) => {
     const isCurrentlyLiked = likedDoubts.has(doubtId);
@@ -283,6 +357,8 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
 
       if (previousDoubts.length > 0) {
         toast.success(`Loaded ${previousDoubts.length} previous doubts`, {
+          id: 'load-doubts-success', // Add ID to prevent duplicate toasts
+          duration: 3000,
           style: {
             background: '#18181b',
             color: '#f4f4f5',
@@ -297,17 +373,8 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
 
     } catch (error) {
       console.error('Failed to fetch previous doubts:', error);
-      toast.error('Failed to load previous doubts', {
-        style: {
-          background: '#18181b',
-          color: '#f4f4f5',
-          border: '1px solid #ef4444',
-        },
-        iconTheme: {
-          primary: '#ef4444',
-          secondary: '#18181b',
-        },
-      });
+      // Don't show error toast for this - it's not critical and can confuse users
+      console.warn('Couldn\'t load previous doubts. New doubts will still work.');
     } finally {
       setIsLoadingDoubts(false);
     }
@@ -336,6 +403,11 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
     navigator.clipboard.writeText(joinUrl);
     toast.success('Join URL copied to clipboard!');
   };
+
+  // Sort doubts by upvotes (highest first)
+  const sortedDoubts = useMemo(() => {
+    return [...doubts].sort((a, b) => b.upvotes - a.upvotes);
+  }, [doubts]);
 
   // Debug logging
   console.log('Room component render state:', {
@@ -530,7 +602,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
                   <div className="text-zinc-400 text-lg mb-2">Loading previous doubts...</div>
                   <div className="text-zinc-500 text-sm">Please wait while we fetch the conversation history</div>
                 </div>
-              ) : doubts.length === 0 ? (
+              ) : sortedDoubts.length === 0 ? (
                 <div className="text-center py-8">
                   <div className="text-zinc-400 text-lg mb-2">No doubts yet</div>
                   <div className="text-zinc-500 text-sm">
@@ -539,7 +611,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {doubts.map((doubt) => (
+                  {sortedDoubts.map((doubt) => (
                     <div
                       key={doubt.id}
                       className="relative bg-zinc-700 rounded-xl p-4 border border-cyan-500/20 hover:border-cyan-400/40 transition-all duration-300 shadow-lg hover:shadow-cyan-500/10"
@@ -567,6 +639,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
                             </button>
                           )}
                           <div className="flex items-center gap-2">
+                            {/* Replace the existing thumbs up icon with a cleaner one */}
                             <button
                               onClick={() => handleToggleLike(doubt.id)}
                               className={`transition-colors ${
@@ -576,19 +649,33 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
                               }`}
                               title={likedDoubts.has(doubt.id) ? 'Unlike' : 'Like'}
                             >
-                              <svg
-                                className="w-5 h-5"
-                                fill={likedDoubts.has(doubt.id) ? 'currentColor' : 'none'}
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L9 7m5 3v4M9 7H7l-3-3M9 7l.6-2.4A2 2 0 0111.6 3h.8A2 2 0 0114 5v2m-5 2H7l-3 3"
-                                />
-                              </svg>
+                              {likedDoubts.has(doubt.id) ? (
+                                <svg 
+                                  xmlns="http://www.w3.org/2000/svg" 
+                                  className="w-5 h-5"
+                                  viewBox="0 0 20 20" 
+                                  fill="currentColor"
+                                >
+                                  <path 
+                                    d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" 
+                                  />
+                                </svg>
+                              ) : (
+                                <svg 
+                                  xmlns="http://www.w3.org/2000/svg" 
+                                  className="w-5 h-5"
+                                  fill="none" 
+                                  viewBox="0 0 20 20" 
+                                  stroke="currentColor"
+                                >
+                                  <path 
+                                    strokeLinecap="round" 
+                                    strokeLinejoin="round" 
+                                    strokeWidth={1.5}
+                                    d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" 
+                                  />
+                                </svg>
+                              )}
                             </button>
                             <span className="text-zinc-300 font-medium min-w-[2rem] text-center">
                               {doubt.upvotes}
