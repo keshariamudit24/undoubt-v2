@@ -45,6 +45,111 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
 
   // WebSocket connection and event handlers
   useEffect(() => {
+    console.log("Setting up WebSocket handlers for room:", roomId);
+    
+    const setupMessageHandlers = () => {
+      // Clear any existing handlers to avoid duplicates
+      wsService.clearHandlers();
+      
+      // Set up message handlers for room functionality
+      wsService.onMessage('error', (data) => {
+        if (!data.msg?.includes('Invalid room Id')) {
+          toast.error(data.msg || 'An error occurred');
+        }
+      });
+
+      // Add handler for success messages from server
+      wsService.onMessage('success', (data) => {
+        console.log('✅ Success message received:', data);
+        // Optionally show success toast for important operations
+        if (data.msg && !data.msg.includes('successfully')) {
+          toast.success(data.msg);
+        }
+      });
+
+      wsService.onMessage('new doubt triggered', (data) => {
+        console.log('📩 New doubt received:', data);
+        
+        // Add new doubt to the list and check for duplicates using state updater
+        setDoubts(prev => {
+          // Check if this doubt already exists (to prevent duplicates)
+          const doubtExists = prev.some(doubt => doubt.id === data.doubtId);
+          if (doubtExists) {
+            console.log('Duplicate doubt detected, ignoring');
+            return prev; // No change if duplicate
+          }
+
+          // Add new doubt to the list
+          const newDoubt: Doubt = {
+            id: data.doubtId || Date.now(), // Use actual database ID from backend
+            doubt: data.doubt,
+            upvotes: 0,
+            user_id: 0,
+            userEmail: data.userEmail,
+            room: roomId,
+          };
+
+          console.log('Adding new doubt to state:', newDoubt);
+          return [...prev, newDoubt];
+        });
+
+        // Show toast notification for new doubt
+        const isOwnDoubt = data.userEmail === user?.email;
+        const toastMessage = isOwnDoubt ? 'Your doubt has been posted!' : 'New doubt posted!';
+
+        toast.success(toastMessage, {
+          style: {
+            background: '#18181b',
+            color: '#f4f4f5',
+            border: '1px solid #06b6d4',
+          },
+          iconTheme: {
+            primary: '#06b6d4',
+            secondary: '#18181b',
+          },
+        });
+      });
+
+      wsService.onMessage('upvote triggered', (data) => {
+        console.log('⬆️ Upvote received for doubt ID:', data.doubtId, typeof data.doubtId);
+        setDoubts(prev => {
+          return prev.map(doubt => {
+            // Make sure to compare as numbers (handle string/number conversions)
+            const doubtId = parseInt(String(doubt.id));
+            const receivedId = parseInt(String(data.doubtId));
+            
+            if (doubtId === receivedId) {
+              console.log('Updating upvotes for doubt:', doubt.id, 'from', doubt.upvotes, 'to', doubt.upvotes + 1);
+              return { ...doubt, upvotes: doubt.upvotes + 1 };
+            }
+            return doubt;
+          });
+        });
+      });
+
+      wsService.onMessage('downvote triggered', (data) => {
+        console.log('⬇️ Downvote received for doubt ID:', data.doubtId, typeof data.doubtId);
+        setDoubts(prev => {
+          return prev.map(doubt => {
+            // Make sure to compare as numbers (handle string/number conversions)
+            const doubtId = parseInt(String(doubt.id));
+            const receivedId = parseInt(String(data.doubtId));
+            
+            if (doubtId === receivedId) {
+              console.log('Updating downvotes for doubt:', doubt.id, 'from', doubt.upvotes, 'to', doubt.upvotes - 1);
+              return { ...doubt, upvotes: Math.max(0, doubt.upvotes - 1) };
+            }
+            return doubt;
+          });
+        });
+      });
+
+      wsService.onMessage('admin-status', (data) => {
+        console.log('👮 Admin status update:', data);
+        setVerifiedAdmin(data.isAdmin);
+      });
+    };
+    
     const connectAndJoin = async () => {
       try {
         // Check if already connected, if not connect
@@ -52,16 +157,9 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
           await wsService.connect();
         }
         setIsConnected(true);
-
-        // Clear any existing handlers to avoid conflicts
-        wsService.clearHandlers();
-
-        // Setup proper reconnection handler
-        wsService.onReconnect(() => {
-          console.log('🔄 WebSocket reconnected, refetching room data');
-          // Refetch data after reconnection
-          fetchPreviousDoubts().catch(console.error);
-        });
+        
+        // Set up message handlers
+        setupMessageHandlers();
 
         // Fetch previous doubts first
         await fetchPreviousDoubts();
@@ -92,36 +190,70 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
       }
     };
 
+    // Initial setup
     connectAndJoin();
 
+    // Handle WebSocket reconnections
+    const handleReconnect = () => {
+      console.log('🔄 WebSocket reconnected, restoring handlers');
+      setIsConnected(true);
+      
+      // Re-setup message handlers after reconnection
+      setupMessageHandlers();
+    };
+    
+    // Register reconnect handler
+    wsService.onReconnect(handleReconnect);
+
+    // Debugging function to log the current state of doubts
+    const logDoubts = () => {
+      console.log("Current doubts state:", doubts.map(d => ({ id: d.id, upvotes: d.upvotes })));
+    };
+    
+    // Set up a periodic check to log doubts (for debugging)
+    const debugInterval = setInterval(logDoubts, 10000);
+    
     return () => {
-      // Clean up handlers when component unmounts
+      clearInterval(debugInterval);
       wsService.clearHandlers();
+      console.log('Room component unmounting, handlers cleaned up');
     };
   }, [roomId, isAdmin, user?.email]);
 
   const handleSubmitDoubt = () => {
     if (newDoubt.trim() && user?.email) {
-      wsService.askDoubt(user.email, roomId, newDoubt.trim());
-      setNewDoubt('');
+      try {
+        console.log('Submitting doubt:', newDoubt);
+        wsService.askDoubt(user.email, roomId, newDoubt.trim());
+        setNewDoubt('');
+      } catch (error) {
+        console.error('Error submitting doubt:', error);
+        toast.error('Failed to submit doubt. Please try again.');
+      }
     }
   };
 
   const handleToggleLike = (doubtId: number) => {
     const isCurrentlyLiked = likedDoubts.has(doubtId);
+    console.log('Toggle like for doubt:', doubtId, 'Currently liked:', isCurrentlyLiked);
 
-    if (isCurrentlyLiked) {
-      // User is unliking - trigger downvote
-      wsService.downvoteDoubt(roomId, doubtId);
-      setLikedDoubts(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(doubtId);
-        return newSet;
-      });
-    } else {
-      // User is liking - trigger upvote
-      wsService.upvoteDoubt(roomId, doubtId);
-      setLikedDoubts(prev => new Set(prev).add(doubtId));
+    try {
+      if (isCurrentlyLiked) {
+        // User is unliking - trigger downvote
+        wsService.downvoteDoubt(roomId, doubtId);
+        setLikedDoubts(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(doubtId);
+          return newSet;
+        });
+      } else {
+        // User is liking - trigger upvote
+        wsService.upvoteDoubt(roomId, doubtId);
+        setLikedDoubts(prev => new Set(prev).add(doubtId));
+      }
+    } catch (error) {
+      console.error('Error toggling like:', error);
+      toast.error('Failed to update vote. Please try again.');
     }
   };
 
@@ -491,4 +623,4 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
 };
 
 export default Room;
-                       
+

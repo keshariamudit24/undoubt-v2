@@ -172,58 +172,88 @@ wss.on("connection", (socket) => {
             // ---------------> UPVOTE A DOUBT <-----------------
             if (parsedMsg.type == "upvote") {
                 // find the doubt and update the upvotes by + 1
-                await client.doubts.update({
-                    where: {
-                        id: parsedMsg.payload.doubtId
-                    },
-                    data: {
-                        upvotes: {
-                            increment: 1
+                console.log("Received upvote for doubt ID:", parsedMsg.payload.doubtId, "in room:", parsedMsg.payload.roomId);
+                try {
+                    await client.doubts.update({
+                        where: {
+                            id: parsedMsg.payload.doubtId
+                        },
+                        data: {
+                            upvotes: {
+                                increment: 1
+                            }
                         }
+                    });
+                    // broadcast the upvotes to everyone in the room
+                    const sockets = rooms.get(parsedMsg.payload.roomId);
+                    if (sockets && sockets.size > 0) {
+                        console.log(`Broadcasting upvote to ${sockets.size} clients in room ${parsedMsg.payload.roomId}`);
+                        const message = {
+                            type: "upvote triggered",
+                            payload: {
+                                doubtId: parsedMsg.payload.doubtId
+                            }
+                        };
+                        broadcast(sockets, message);
                     }
-                });
-                // broadcast the upvotes to everyone in the room
-                const sockets = rooms.get(parsedMsg.payload.roomId);
-                const message = {
-                    type: "upvote triggered",
-                    payload: {
-                        doubtId: parsedMsg.payload.doubtId
+                    else {
+                        console.log(`No sockets found for room ${parsedMsg.payload.roomId}`);
                     }
-                };
-                if (sockets) {
-                    broadcast(sockets, message);
+                    socket.send(JSON.stringify({
+                        type: "success",
+                        msg: "upvoted successfully"
+                    }));
                 }
-                socket.send(JSON.stringify({
-                    msg: "upvoted successfully"
-                }));
+                catch (error) {
+                    console.error("Error updating upvotes:", error);
+                    socket.send(JSON.stringify({
+                        type: "error",
+                        payload: { message: "Failed to update upvotes" }
+                    }));
+                }
             }
             // ---------------> DOWNVOTE A DOUBT <-----------------
             if (parsedMsg.type == "downvote") {
                 // find the doubt and update the upvotes by - 1
-                await client.doubts.update({
-                    where: {
-                        id: parsedMsg.payload.doubtId
-                    },
-                    data: {
-                        upvotes: {
-                            decrement: 1
+                console.log("Received downvote for doubt ID:", parsedMsg.payload.doubtId, "in room:", parsedMsg.payload.roomId);
+                try {
+                    await client.doubts.update({
+                        where: {
+                            id: parsedMsg.payload.doubtId
+                        },
+                        data: {
+                            upvotes: {
+                                decrement: 1
+                            }
                         }
+                    });
+                    // broadcast the downvotes to everyone in the room
+                    const sockets = rooms.get(parsedMsg.payload.roomId);
+                    if (sockets && sockets.size > 0) {
+                        console.log(`Broadcasting downvote to ${sockets.size} clients in room ${parsedMsg.payload.roomId}`);
+                        const message = {
+                            type: "downvote triggered",
+                            payload: {
+                                doubtId: parsedMsg.payload.doubtId
+                            }
+                        };
+                        broadcast(sockets, message);
                     }
-                });
-                // broadcast the downvotes to everyone in the room
-                const sockets = rooms.get(parsedMsg.payload.roomId);
-                const message = {
-                    type: "downvote triggered",
-                    payload: {
-                        doubtId: parsedMsg.payload.doubtId
+                    else {
+                        console.log(`No sockets found for room ${parsedMsg.payload.roomId}`);
                     }
-                };
-                if (sockets) {
-                    broadcast(sockets, message);
+                    socket.send(JSON.stringify({
+                        type: "success",
+                        msg: "downvoted successfully"
+                    }));
                 }
-                socket.send(JSON.stringify({
-                    msg: "downvoted successfully"
-                }));
+                catch (error) {
+                    console.error("Error updating downvotes:", error);
+                    socket.send(JSON.stringify({
+                        type: "error",
+                        payload: { message: "Failed to update downvotes" }
+                    }));
+                }
             }
             // ---------------> LEAVE ROOM <-----------------
             if (parsedMsg.type == "leave") {
