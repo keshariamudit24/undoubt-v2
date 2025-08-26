@@ -88,6 +88,7 @@ wss.on("connection", (socket) => {
 					email: parsedMsg.payload.email,
 					roomId: parsedMsg.payload.roomId
 				});
+				console.log("sockets info : ", socketUsers.get(socket)?.email)
 
 				// Don't create a doubts entry just for joining - only create when asking doubts
 				// The doubts table should only contain actual doubts, not room memberships
@@ -132,6 +133,7 @@ wss.on("connection", (socket) => {
 					email: parsedMsg.payload.email,
 					roomId: parsedMsg.payload.roomId
 				});
+				console.log("sockets info : ", socketUsers.get(socket)?.email)
 
 				// Track this user as the room admin
 				roomAdmins.set(parsedMsg.payload.roomId, parsedMsg.payload.email);
@@ -300,13 +302,20 @@ wss.on("connection", (socket) => {
 		}
 	})
 	socket.on("close", () => {
-		// triggers when there's any network error, user closes the tab,, user refreshes the site
-		// need to write clean-up logic 
-		const users = socketUsers.get(socket)
-		socketUsers.delete(socket)
+		// triggers when there's any network error, user closes the tab, or user refreshes the site
+		// Get user info before deleting from the map
+		const users = socketUsers.get(socket);
+		socketUsers.delete(socket);
+		
+		// Just remove the socket from the room, but keep the room alive
+		// This allows the user to reconnect to the same room later
 		if (users?.roomId) {
 			rooms.get(users.roomId)?.delete(socket);
+			// Only log the disconnect, don't clean up the actual room data
+			console.log(`User socket disconnected from room ${users.roomId}, socket removed`);
 		}
+		
+		console.log("Active sockets count: ", socketUsers.size);
 	})
 })
 

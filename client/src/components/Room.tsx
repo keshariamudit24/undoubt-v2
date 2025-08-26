@@ -45,39 +45,17 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
 
   // WebSocket connection and event handlers
   useEffect(() => {
-    const connectAndJoin = async () => {
-      try {
-        // Check if already connected, if not connect
-        if (!wsService.isConnected()) {
-          await wsService.connect();
+    const setupMessageHandlers = () => {
+      // Clear any existing handlers to avoid conflicts
+      wsService.clearHandlers();
+
+      // Set up message handlers for room functionality
+      wsService.onMessage('error', (data) => {
+        // Only show errors that aren't related to joining (those are handled in Dashboard)
+        if (!data.msg?.includes('Invalid room Id')) {
+          toast.error(data.msg || 'An error occurred');
         }
-        setIsConnected(true);
-
-        // Clear any existing handlers to avoid conflicts
-        wsService.clearHandlers();
-
-        // Fetch previous doubts first
-        await fetchPreviousDoubts();
-
-        if (isAdmin) {
-          // Create room - backend will automatically send admin status confirmation
-          wsService.createRoom(user?.email || '', roomId);
-        } else {
-          // For non-admins, check admin status immediately
-          if (user?.email) {
-            wsService.checkAdminStatus(user.email, roomId);
-          }
-        }
-        // Note: For non-admin users, the join was already handled in Dashboard
-        // We don't call joinRoom again here to avoid conflicts
-
-        // Set up message handlers for room functionality
-        wsService.onMessage('error', (data) => {
-          // Only show errors that aren't related to joining (those are handled in Dashboard)
-          if (!data.msg?.includes('Invalid room Id')) {
-            toast.error(data.msg || 'An error occurred');
-          }
-        });
+      });
 
         wsService.onMessage('new doubt triggered', (data) => {
           // Add new doubt to the list and check for duplicates using state updater
@@ -153,6 +131,45 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
               },
             });
           }
+        });
+    };
+
+    const connectAndJoin = async () => {
+      try {
+        // Check if already connected, if not connect
+        if (!wsService.isConnected()) {
+          await wsService.connect();
+        }
+        setIsConnected(true);
+
+        // Setup message handlers
+        setupMessageHandlers();
+
+        // Fetch previous doubts first
+        await fetchPreviousDoubts();
+
+        // Check if we already have room state (from reconnection or Dashboard join)
+        const currentRoom = wsService.getCurrentRoom();
+
+        if (isAdmin && (!currentRoom || currentRoom.roomId !== roomId)) {
+          // Create room - backend will automatically send admin status confirmation
+          wsService.createRoom(user?.email || '', roomId);
+        } else if (!isAdmin && (!currentRoom || currentRoom.roomId !== roomId)) {
+          // For non-admins, join the room if not already joined
+          wsService.joinRoom(user?.email || '', roomId);
+        } else if (currentRoom && currentRoom.roomId === roomId) {
+          // We're already in the room (likely from reconnection), just check admin status
+          if (user?.email) {
+            wsService.checkAdminStatus(user.email, roomId);
+          }
+        }
+
+        // Register reconnection handler to re-setup everything after reconnection
+        wsService.onReconnect(() => {
+          console.log('🔄 Reconnected! Re-setting up message handlers...');
+          setupMessageHandlers();
+          // Re-fetch doubts after reconnection
+          fetchPreviousDoubts();
         });
 
       } catch (error) {
