@@ -302,20 +302,14 @@ wss.on("connection", (socket) => {
 		}
 	})
 	socket.on("close", () => {
-		// triggers when there's any network error, user closes the tab, or user refreshes the site
-		// Get user info before deleting from the map
-		const users = socketUsers.get(socket);
-		socketUsers.delete(socket);
-		
-		// Just remove the socket from the room, but keep the room alive
-		// This allows the user to reconnect to the same room later
+		// triggers when there's any network error, user closes the tab,, user refreshes the site
+		// need to write clean-up logic 
+		const users = socketUsers.get(socket)
+		socketUsers.delete(socket)
 		if (users?.roomId) {
 			rooms.get(users.roomId)?.delete(socket);
-			// Only log the disconnect, don't clean up the actual room data
-			console.log(`User socket disconnected from room ${users.roomId}, socket removed`);
 		}
-		
-		console.log("Active sockets count: ", socketUsers.size);
+		console.log("sockets size : ", socketUsers.size)
 	})
 })
 

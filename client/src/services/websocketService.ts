@@ -17,44 +17,48 @@ export interface WebSocketMessage {
   messageType?: string;
 }
 
+export interface RoomSession {
+  roomId: string;
+  email: string;
+  isAdmin: boolean;
+}
+
 class WebSocketService {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private messageHandlers: Map<string, (data: any) => void> = new Map();
-
-  // Store room state for reconnection
-  private currentRoom: { roomId: string; email: string; isAdmin: boolean } | null = null;
+  private currentRoom: RoomSession | null = null;
   private reconnectionCallbacks: (() => void)[] = [];
 
   constructor() {
     // Load persisted room state when service initializes
-    this.loadPersistedState();
+    this.loadPersistedRoomState();
   }
 
-  // Save room state to localStorage
-  private persistState() {
+  // Save room state to localStorage for persistence across refreshes
+  private persistRoomState() {
     if (this.currentRoom) {
-      localStorage.setItem('undoubt_room', JSON.stringify(this.currentRoom));
-      console.log('💾 Room state persisted to localStorage:', this.currentRoom);
+      localStorage.setItem('undoubt_room_state', JSON.stringify(this.currentRoom));
+      console.log('💾 Room state persisted:', this.currentRoom);
     } else {
-      localStorage.removeItem('undoubt_room');
+      localStorage.removeItem('undoubt_room_state');
       console.log('🗑️ Room state cleared from localStorage');
     }
   }
 
   // Load room state from localStorage
-  private loadPersistedState() {
+  private loadPersistedRoomState() {
     try {
-      const savedState = localStorage.getItem('undoubt_room');
-      if (savedState) {
-        this.currentRoom = JSON.parse(savedState);
+      const storedRoom = localStorage.getItem('undoubt_room_state');
+      if (storedRoom) {
+        this.currentRoom = JSON.parse(storedRoom);
         console.log('📂 Room state loaded from localStorage:', this.currentRoom);
       }
     } catch (error) {
-      console.error('Failed to load persisted state:', error);
-      localStorage.removeItem('undoubt_room');
+      console.error('Failed to load persisted room state:', error);
+      localStorage.removeItem('undoubt_room_state');
     }
   }
 
@@ -72,29 +76,27 @@ class WebSocketService {
         this.ws.onopen = () => {
           console.log('✅ WebSocket connected');
           this.reconnectAttempts = 0;
-
-          // If we have a stored room, rejoin it after reconnection
+          
+          // If we have persisted room info, automatically rejoin after connection
           if (this.currentRoom) {
-            console.log('🔄 Rejoining room after reconnection:', this.currentRoom.roomId);
-            const roomToRejoin = { ...this.currentRoom }; // Create a copy to avoid overwriting
-
-            if (roomToRejoin.isAdmin) {
+            console.log('🔄 Rejoining room after connection:', this.currentRoom.roomId);
+            if (this.currentRoom.isAdmin) {
               this.send({
                 type: 'create',
-                payload: { email: roomToRejoin.email, roomId: roomToRejoin.roomId }
+                payload: { email: this.currentRoom.email, roomId: this.currentRoom.roomId }
               });
             } else {
               this.send({
                 type: 'join',
-                payload: { email: roomToRejoin.email, roomId: roomToRejoin.roomId }
+                payload: { email: this.currentRoom.email, roomId: this.currentRoom.roomId }
               });
             }
           }
-
+          
           // Execute any pending reconnection callbacks
           this.reconnectionCallbacks.forEach(callback => callback());
           this.reconnectionCallbacks = [];
-
+          
           resolve();
         };
 
@@ -113,7 +115,7 @@ class WebSocketService {
         };
 
         this.ws.onclose = () => {
-          console.log('🔌 WebSocket disconnected. Current room state:', this.currentRoom);
+          console.log('🔌 WebSocket disconnected. Current room:', this.currentRoom);
           this.attemptReconnect();
         };
 
@@ -131,16 +133,14 @@ class WebSocketService {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
       console.log(`🔄 Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-
+      
       setTimeout(() => {
-        this.connect().catch((error) => {
+        this.connect().catch(error => {
           console.error('❌ Reconnection failed:', error);
-          // Continue trying to reconnect
-          this.attemptReconnect();
         });
       }, this.reconnectDelay * this.reconnectAttempts);
     } else {
-      console.error('❌ Max reconnection attempts reached. Please refresh the page.');
+      console.error('❌ Maximum reconnection attempts reached');
     }
   }
 
@@ -149,10 +149,10 @@ class WebSocketService {
       this.ws.close();
       this.ws = null;
     }
-
-    // Only clear room state if explicitly requested (for permanent disconnection)
+    
     if (clearRoomState) {
       this.currentRoom = null;
+      this.persistRoomState(); // Clear from localStorage
     }
   }
 
@@ -172,11 +172,10 @@ class WebSocketService {
 
   // Room management
   createRoom(email: string, roomId: string) {
-    // Store room state for reconnection
+    // Store room info for reconnection
     this.currentRoom = { roomId, email, isAdmin: true };
-    console.log('💾 Stored room state for reconnection:', this.currentRoom);
-    this.persistState(); // Save to localStorage
-
+    this.persistRoomState();
+    
     this.send({
       type: 'create',
       payload: { email, roomId }
@@ -184,11 +183,10 @@ class WebSocketService {
   }
 
   joinRoom(email: string, roomId: string) {
-    // Store room state for reconnection
+    // Store room info for reconnection
     this.currentRoom = { roomId, email, isAdmin: false };
-    console.log('💾 Stored room state for reconnection:', this.currentRoom);
-    this.persistState(); // Save to localStorage
-
+    this.persistRoomState();
+    
     this.send({
       type: 'join',
       payload: { email, roomId }
@@ -198,9 +196,8 @@ class WebSocketService {
   leaveRoom(roomId: string) {
     // Clear room state when leaving
     this.currentRoom = null;
-    console.log('🚪 Left room, cleared room state');
-    this.persistState(); // Remove from localStorage
-
+    this.persistRoomState();
+    
     this.send({
       type: 'leave',
       payload: { roomId }
@@ -210,8 +207,8 @@ class WebSocketService {
   closeRoom(roomId: string) {
     // Clear room state when closing
     this.currentRoom = null;
-    this.persistState(); // Remove from localStorage
-
+    this.persistRoomState();
+    
     this.send({
       type: 'close',
       payload: { roomId }
@@ -254,19 +251,14 @@ class WebSocketService {
     this.messageHandlers.clear();
   }
 
-  // Register callback for when reconnection happens
+  // Register callback for reconnection
   onReconnect(callback: () => void) {
     this.reconnectionCallbacks.push(callback);
   }
 
-  // Get current room info
-  getCurrentRoom() {
+  // Get current room state
+  getCurrentRoom(): RoomSession | null {
     return this.currentRoom;
-  }
-
-  // Check if currently in a specific room
-  isInRoom(roomId: string): boolean {
-    return this.currentRoom?.roomId === roomId;
   }
 
   // Check if user is admin of a room
