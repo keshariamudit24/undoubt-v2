@@ -60,15 +60,8 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
         await fetchPreviousDoubts();
 
         if (isAdmin) {
-          // Create room first, then check admin status
+          // Create room - backend will automatically send admin status confirmation
           wsService.createRoom(user?.email || '', roomId);
-
-          // Wait a bit for room creation to complete, then verify admin status
-          setTimeout(() => {
-            if (user?.email) {
-              wsService.checkAdminStatus(user.email, roomId);
-            }
-          }, 500);
         } else {
           // For non-admins, check admin status immediately
           if (user?.email) {
@@ -87,37 +80,42 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
         });
 
         wsService.onMessage('new doubt triggered', (data) => {
-          // Check if this doubt already exists (to prevent duplicates)
-          const doubtExists = doubts.some(doubt => doubt.id === data.doubtId);
-          if (doubtExists) {
-            return;
-          }
+          // Add new doubt to the list and check for duplicates using state updater
+          setDoubts(prev => {
+            // Check if this doubt already exists (to prevent duplicates)
+            const doubtExists = prev.some(doubt => doubt.id === data.doubtId);
+            if (doubtExists) {
+              return prev; // No change if duplicate
+            }
 
-          // Add new doubt to the list
-          const newDoubt: Doubt = {
-            id: data.doubtId || Date.now(), // Use actual database ID from backend
-            doubt: data.doubt,
-            upvotes: 0,
-            user_id: 0,
-            userEmail: data.userEmail,
-            room: roomId,
-          };
-          setDoubts(prev => [...prev, newDoubt]);
+            // Add new doubt to the list
+            const newDoubt: Doubt = {
+              id: data.doubtId || Date.now(), // Use actual database ID from backend
+              doubt: data.doubt,
+              upvotes: 0,
+              user_id: 0,
+              userEmail: data.userEmail,
+              room: roomId,
+            };
 
-          // Show toast notification for new doubt (only if it's from another user)
-          if (data.userEmail !== user?.email) {
-            toast.success('New doubt posted!', {
-              style: {
-                background: '#18181b',
-                color: '#f4f4f5',
-                border: '1px solid #06b6d4',
-              },
-              iconTheme: {
-                primary: '#06b6d4',
-                secondary: '#18181b',
-              },
-            });
-          }
+            return [...prev, newDoubt];
+          });
+
+          // Show toast notification for new doubt to everyone in the room
+          const isOwnDoubt = data.userEmail === user?.email;
+          const toastMessage = isOwnDoubt ? 'Your doubt has been posted!' : 'New doubt posted!';
+
+          toast.success(toastMessage, {
+            style: {
+              background: '#18181b',
+              color: '#f4f4f5',
+              border: '1px solid #06b6d4',
+            },
+            iconTheme: {
+              primary: '#06b6d4',
+              secondary: '#18181b',
+            },
+          });
         });
 
         wsService.onMessage('upvote triggered', (data) => {
@@ -137,7 +135,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
         });
 
         wsService.onMessage('admin-status', (data) => {
-          console.log('Admin status received:', data.isAdmin, 'Frontend isAdmin:', isAdmin);
+          console.log('Admin status received:', data.isAdmin, 'Frontend isAdmin:', isAdmin, 'Current verifiedAdmin:', verifiedAdmin);
           setVerifiedAdmin(data.isAdmin);
 
           // Only show warning if frontend thinks user is admin but backend strongly disagrees
@@ -284,6 +282,16 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
     toast.success('Join URL copied to clipboard!');
   };
 
+  // Debug logging
+  console.log('Room component render state:', {
+    roomId,
+    isAdmin,
+    verifiedAdmin,
+    isConnected,
+    doubts: doubts.length,
+    shouldShowAdminControls: (isAdmin && verifiedAdmin !== false)
+  });
+
   return (
     <div className="min-h-screen bg-zinc-900 text-white p-4">
       <div className="max-w-6xl mx-auto">
@@ -317,7 +325,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
           </div>
 
           <div className="flex gap-3">
-            {(isAdmin && verifiedAdmin !== false) && (
+            {isAdmin && (verifiedAdmin === null || verifiedAdmin === true) && (
               <button
                 onClick={handleCloseRoom}
                 className="group relative px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl hover:shadow-red-500/25 border border-red-500/20 hover:border-red-400/40"
@@ -416,7 +424,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
           {/* Right Column - Doubts */}
           <div className={`${isAdmin ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
             {/* Submit Doubt (Non-admin) */}
-            {!(isAdmin && verifiedAdmin !== false) && (
+            {!isAdmin && (
               <div className="relative bg-zinc-800 rounded-2xl border-2 border-cyan-500/30 p-6 mb-6 shadow-lg shadow-cyan-500/10">
                 {/* Neon glow effect */}
                 <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-cyan-500/10 to-blue-500/10 blur-sm"></div>
@@ -471,7 +479,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
                 <div className="text-center py-8">
                   <div className="text-zinc-400 text-lg mb-2">No doubts yet</div>
                   <div className="text-zinc-500 text-sm">
-                    {(isAdmin && verifiedAdmin !== false) ? 'Waiting for participants to ask questions...' : 'Be the first to ask a doubt!'}
+                    {isAdmin && (verifiedAdmin === null || verifiedAdmin === true) ? 'Waiting for participants to ask questions...' : 'Be the first to ask a doubt!'}
                   </div>
                 </div>
               ) : (
@@ -485,7 +493,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
                         <p className="text-white flex-1">{doubt.doubt}</p>
                         <div className="flex items-center gap-2 ml-4">
                           {/* Email visibility toggle for admin */}
-                          {(isAdmin && verifiedAdmin !== false) && doubt.userEmail && (
+                          {isAdmin && (verifiedAdmin === null || verifiedAdmin === true) && doubt.userEmail && (
                             <button
                               onClick={() => toggleEmailVisibility(doubt.id)}
                               className="text-zinc-400 hover:text-cyan-400 transition-colors"
@@ -534,7 +542,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
                         </div>
                       </div>
                       {/* Show email only if admin has toggled it visible for this specific doubt */}
-                      {(isAdmin && verifiedAdmin !== false) && visibleEmails.has(doubt.id) && doubt.userEmail && (
+                      {isAdmin && (verifiedAdmin === null || verifiedAdmin === true) && visibleEmails.has(doubt.id) && doubt.userEmail && (
                         <div className="text-sm text-cyan-400 mt-2">
                           {doubt.userEmail}
                         </div>

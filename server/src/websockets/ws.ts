@@ -143,11 +143,18 @@ wss.on("connection", (socket) => {
 					}
 				})
 
+				// Send success message
 				socket.send(JSON.stringify({
                     type: "system",
                     messageType: "success",
                     payload: { message: "Room created successfully" }
                 }));
+
+				// Immediately send admin status confirmation
+				socket.send(JSON.stringify({
+					type: "admin-status",
+					payload: { isAdmin: true }
+				}));
 			}
 
 			// ---------------> ASK DOUBT <-----------------
