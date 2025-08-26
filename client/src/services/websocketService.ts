@@ -71,31 +71,22 @@ class WebSocketService {
       }
 
       try {
+        console.log('Connecting to WebSocket server...');
         this.ws = new WebSocket(WS_URL);
 
         this.ws.onopen = () => {
           console.log('✅ WebSocket connected');
           this.reconnectAttempts = 0;
           
-          // If we have persisted room info, automatically rejoin after connection
-          if (this.currentRoom) {
-            console.log('🔄 Rejoining room after connection:', this.currentRoom.roomId);
-            if (this.currentRoom.isAdmin) {
-              this.send({
-                type: 'create',
-                payload: { email: this.currentRoom.email, roomId: this.currentRoom.roomId }
-              });
-            } else {
-              this.send({
-                type: 'join',
-                payload: { email: this.currentRoom.email, roomId: this.currentRoom.roomId }
-              });
-            }
-          }
+          // Note: We're no longer automatically rejoining rooms here
+          // This will now be handled explicitly by the Room component
+          // to ensure room membership is properly established
           
           // Execute any pending reconnection callbacks
-          this.reconnectionCallbacks.forEach(callback => callback());
-          this.reconnectionCallbacks = [];
+          if (this.reconnectionCallbacks.length > 0) {
+            console.log(`Running ${this.reconnectionCallbacks.length} reconnection callbacks`);
+            this.reconnectionCallbacks.forEach(callback => callback());
+          }
           
           resolve();
         };
@@ -108,6 +99,9 @@ class WebSocketService {
             const handler = this.messageHandlers.get(message.type);
             if (handler) {
               handler(message.payload);
+            } else {
+              // Don't throw errors for unhandled message types, just log them
+              console.warn(`⚠️ No handler registered for message type: ${message.type}`, message);
             }
           } catch (error) {
             console.error('❌ Error parsing WebSocket message:', error);
@@ -115,7 +109,7 @@ class WebSocketService {
         };
 
         this.ws.onclose = () => {
-          console.log('🔌 WebSocket disconnected. Current room:', this.currentRoom);
+          console.log('🔌 WebSocket disconnected');
           this.attemptReconnect();
         };
 
@@ -224,6 +218,7 @@ class WebSocketService {
   }
 
   upvoteDoubt(roomId: string, doubtId: number) {
+    console.log('📤 Sending upvote for doubt:', doubtId, 'in room:', roomId);
     this.send({
       type: 'upvote',
       payload: { roomId, doubtId }
@@ -231,6 +226,7 @@ class WebSocketService {
   }
 
   downvoteDoubt(roomId: string, doubtId: number) {
+    console.log('📤 Sending downvote for doubt:', doubtId, 'in room:', roomId);
     this.send({
       type: 'downvote',
       payload: { roomId, doubtId }
@@ -239,6 +235,8 @@ class WebSocketService {
 
   // Event handlers
   onMessage(type: string, handler: (data: any) => void) {
+    // Debug log to verify handler registration
+    console.log(`📝 Registering handler for message type: ${type}`);
     this.messageHandlers.set(type, handler);
   }
 
@@ -251,7 +249,7 @@ class WebSocketService {
     this.messageHandlers.clear();
   }
 
-  // Register callback for reconnection
+  // Register callback for when reconnection happens
   onReconnect(callback: () => void) {
     this.reconnectionCallbacks.push(callback);
   }
