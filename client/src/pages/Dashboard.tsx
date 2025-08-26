@@ -13,6 +13,37 @@ const Dashboard: React.FC = () => {
   const [roomId, setRoomId] = useState('');
   const [currentRoom, setCurrentRoom] = useState<{ roomId: string; isAdmin: boolean } | null>(null);
 
+  // Check for persisted room on component mount
+  useEffect(() => {
+    if (!loading && user) {
+      const persistedRoom = wsService.getCurrentRoom();
+      if (persistedRoom) {
+        console.log('📋 Found persisted room state, reconnecting:', persistedRoom);
+        
+        // Try to connect and restore the room session
+        const reconnectToRoom = async () => {
+          try {
+            await wsService.connect();
+            setCurrentRoom({
+              roomId: persistedRoom.roomId,
+              isAdmin: persistedRoom.isAdmin
+            });
+            
+            toast.success(`Reconnected to room: ${persistedRoom.roomId}`, { 
+              id: 'room-reconnection',
+              duration: 3000 
+            });
+          } catch (error) {
+            console.error('Failed to reconnect to room:', error);
+            toast.error('Failed to reconnect to your previous room');
+          }
+        };
+        
+        reconnectToRoom();
+      }
+    }
+  }, [loading, user]);
+
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -40,7 +71,10 @@ const Dashboard: React.FC = () => {
       // Test WebSocket connection first
       await wsService.connect();
 
-      // For room creation, we can immediately set the room state since admin creates it
+      // Create the room
+      wsService.createRoom(user?.email || '', newRoomId);
+      
+      // For room creation, we can immediately set the room state
       setCurrentRoom({ roomId: newRoomId, isAdmin: true });
       toast.success(`Room created: ${newRoomId}`);
     } catch (error) {
@@ -103,6 +137,7 @@ const Dashboard: React.FC = () => {
   };
 
   const handleLeaveRoom = () => {
+    wsService.leaveRoom(currentRoom?.roomId || '');
     setCurrentRoom(null);
     toast.success('Left the room');
   };
@@ -111,35 +146,6 @@ const Dashboard: React.FC = () => {
     setShowJoinRoomModal(false);
     setRoomId('');
   };
-
-  // Check for persisted room on component mount
-  useEffect(() => {
-    // Try to reconnect to WebSocket server first
-    const checkPersistedRoom = async () => {
-      try {
-        if (!wsService.isConnected()) {
-          await wsService.connect();
-        }
-        
-        // Check if there's a persisted room state
-        const persistedRoom = wsService.getCurrentRoom();
-        if (persistedRoom && persistedRoom.roomId) {
-          console.log('📋 Found persisted room, restoring session:', persistedRoom);
-          setCurrentRoom({
-            roomId: persistedRoom.roomId,
-            isAdmin: persistedRoom.isAdmin
-          });
-          toast.success(`Reconnected to room: ${persistedRoom.roomId}`, {
-            duration: 3000
-          });
-        }
-      } catch (error) {
-        console.error('Failed to restore room session:', error);
-      }
-    };
-    
-    checkPersistedRoom();
-  }, []);
 
   if (loading) {
     return (
