@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -111,6 +111,35 @@ const Dashboard: React.FC = () => {
     setShowJoinRoomModal(false);
     setRoomId('');
   };
+
+  // Check for persisted room on component mount
+  useEffect(() => {
+    // Try to reconnect to WebSocket server first
+    const checkPersistedRoom = async () => {
+      try {
+        if (!wsService.isConnected()) {
+          await wsService.connect();
+        }
+        
+        // Check if there's a persisted room state
+        const persistedRoom = wsService.getCurrentRoom();
+        if (persistedRoom && persistedRoom.roomId) {
+          console.log('📋 Found persisted room, restoring session:', persistedRoom);
+          setCurrentRoom({
+            roomId: persistedRoom.roomId,
+            isAdmin: persistedRoom.isAdmin
+          });
+          toast.success(`Reconnected to room: ${persistedRoom.roomId}`, {
+            duration: 3000
+          });
+        }
+      } catch (error) {
+        console.error('Failed to restore room session:', error);
+      }
+    };
+    
+    checkPersistedRoom();
+  }, []);
 
   if (loading) {
     return (

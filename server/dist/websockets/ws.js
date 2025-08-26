@@ -65,6 +65,7 @@ wss.on("connection", (socket) => {
                     email: parsedMsg.payload.email,
                     roomId: parsedMsg.payload.roomId
                 });
+                console.log("sockets info : ", socketUsers.get(socket)?.email);
                 // Don't create a doubts entry just for joining - only create when asking doubts
                 // The doubts table should only contain actual doubts, not room memberships
                 socket.send(JSON.stringify({
@@ -103,6 +104,7 @@ wss.on("connection", (socket) => {
                     email: parsedMsg.payload.email,
                     roomId: parsedMsg.payload.roomId
                 });
+                console.log("sockets info : ", socketUsers.get(socket)?.email);
                 // Track this user as the room admin
                 roomAdmins.set(parsedMsg.payload.roomId, parsedMsg.payload.email);
                 await client.doubts.create({
@@ -256,6 +258,7 @@ wss.on("connection", (socket) => {
         if (users?.roomId) {
             rooms.get(users.roomId)?.delete(socket);
         }
+        console.log("sockets size : ", socketUsers.size);
     });
 });
 // "msg" breakdown 
