@@ -161,27 +161,20 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
         // Set up message handlers
         setupMessageHandlers();
 
-        // Fetch previous doubts first
-        await fetchPreviousDoubts();
-
-        // Room states are now managed by the WebSocketService and stored in localStorage
-        // We only need to send create/join commands if this is the initial room load
-
-        const currentRoomState = wsService.getCurrentRoom();
-        
-        // Only send the room commands if we need to - avoid duplicate messages
-        if (!currentRoomState || currentRoomState.roomId !== roomId) {
+        // Critical fix: Always rejoin the room after page refresh to re-register the socket on the server
+        const email = user?.email || '';
+        if (email) {
           if (isAdmin) {
-            // Create room - backend will automatically send admin status confirmation
-            wsService.createRoom(user?.email || '', roomId);
+            console.log('🔄 Explicitly re-creating room as admin after page load:', roomId);
+            wsService.createRoom(email, roomId);
           } else {
-            // For non-admins, join the room
-            wsService.joinRoom(user?.email || '', roomId);
+            console.log('🔄 Explicitly re-joining room after page load:', roomId);
+            wsService.joinRoom(email, roomId);
           }
-        } else if (user?.email) {
-          // We're already in this room according to our state, just verify admin status
-          wsService.checkAdminStatus(user.email, roomId);
         }
+
+        // Fetch previous doubts after joining room
+        await fetchPreviousDoubts();
 
       } catch (error) {
         console.error('Failed to setup room:', error);

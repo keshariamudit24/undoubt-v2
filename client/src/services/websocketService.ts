@@ -78,6 +78,10 @@ class WebSocketService {
           console.log('✅ WebSocket connected');
           this.reconnectAttempts = 0;
           
+          // Note: We're no longer automatically rejoining rooms here
+          // This will now be handled explicitly by the Room component
+          // to ensure room membership is properly established
+          
           // Execute any pending reconnection callbacks
           if (this.reconnectionCallbacks.length > 0) {
             console.log(`Running ${this.reconnectionCallbacks.length} reconnection callbacks`);
@@ -231,6 +235,8 @@ class WebSocketService {
 
   // Event handlers
   onMessage(type: string, handler: (data: any) => void) {
+    // Debug log to verify handler registration
+    console.log(`📝 Registering handler for message type: ${type}`);
     this.messageHandlers.set(type, handler);
   }
 
