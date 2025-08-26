@@ -60,7 +60,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
 
       // Add handler for success messages from server
       wsService.onMessage('success', (data) => {
-        console.log('✅ Success message received:', data);
+        console.log('Success message received:', data);
         // Optionally show success toast for important operations
         if (data.msg && !data.msg.includes('successfully')) {
           toast.success(data.msg);
@@ -68,7 +68,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
       });
 
       wsService.onMessage('new doubt triggered', (data) => {
-        console.log('📩 New doubt received:', data);
+        console.log('New doubt received:', data);
         
         // Add new doubt to the list and check for duplicates using state updater
         setDoubts(prev => {
@@ -111,7 +111,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
       });
 
       wsService.onMessage('upvote triggered', (data) => {
-        console.log('⬆️ Upvote received for doubt ID:', data.doubtId, typeof data.doubtId);
+        console.log('Upvote received for doubt ID:', data.doubtId, typeof data.doubtId);
         setDoubts(prev => {
           return prev.map(doubt => {
             // Make sure to compare as numbers (handle string/number conversions)
@@ -128,7 +128,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
       });
 
       wsService.onMessage('downvote triggered', (data) => {
-        console.log('⬇️ Downvote received for doubt ID:', data.doubtId, typeof data.doubtId);
+        console.log('Downvote received for doubt ID:', data.doubtId, typeof data.doubtId);
         setDoubts(prev => {
           return prev.map(doubt => {
             // Make sure to compare as numbers (handle string/number conversions)
@@ -145,7 +145,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
       });
 
       wsService.onMessage('admin-status', (data) => {
-        console.log('👮 Admin status update:', data);
+        console.log('Admin status update:', data);
         setVerifiedAdmin(data.isAdmin);
       });
     };
@@ -169,10 +169,10 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
           const email = user?.email || '';
           if (email) {
             if (isAdmin) {
-              console.log('🔄 Explicitly re-creating room as admin after page load:', roomId);
+              console.log('Explicitly re-creating room as admin after page load:', roomId);
               wsService.createRoom(email, roomId);
             } else {
-              console.log('🔄 Explicitly re-joining room after page load:', roomId);
+              console.log('Explicitly re-joining room after page load:', roomId);
               wsService.joinRoom(email, roomId);
             }
           }
@@ -232,7 +232,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
 
     // Handle WebSocket reconnections
     const handleReconnect = () => {
-      console.log('🔄 WebSocket reconnected, restoring handlers');
+      console.log('WebSocket reconnected, restoring handlers');
       setIsConnected(true);
       
       // Re-setup message handlers after reconnection
@@ -278,7 +278,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
         if (storedLikes) {
           const likedIds = JSON.parse(storedLikes);
           setLikedDoubts(new Set(likedIds));
-          console.log('📋 Restored liked doubts from localStorage:', likedIds);
+          console.log('Restored liked doubts from localStorage:', likedIds);
         }
       } catch (error) {
         console.error('Failed to load liked doubts from localStorage:', error);
@@ -408,7 +408,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
   const sortedDoubts = useMemo(() => {
     return [...doubts].sort((a, b) => b.upvotes - a.upvotes);
   }, [doubts]);
-
+  
   // Debug logging
   console.log('Room component render state:', {
     roomId,

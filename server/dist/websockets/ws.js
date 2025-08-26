@@ -107,12 +107,21 @@ wss.on("connection", (socket) => {
                 console.log("sockets info : ", socketUsers.get(socket)?.email);
                 // Track this user as the room admin
                 roomAdmins.set(parsedMsg.payload.roomId, parsedMsg.payload.email);
-                await client.doubts.create({
-                    data: {
-                        user_id: user.id,
-                        room: parsedMsg.payload.roomId,
+                // create a new entry only if there doesnt exist one already. This way we can prevent the creatation of new entries while reload 
+                let findAdmin = await client.doubts.findFirst({
+                    where: {
+                        user_id: user.id
                     }
                 });
+                if (findAdmin == undefined) {
+                    console.log("couldnt find the user");
+                    await client.doubts.create({
+                        data: {
+                            user_id: user.id,
+                            room: parsedMsg.payload.roomId,
+                        }
+                    });
+                }
                 // Send success message
                 socket.send(JSON.stringify({
                     type: "system",
