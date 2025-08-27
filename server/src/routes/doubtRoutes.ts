@@ -48,5 +48,23 @@ doubtRouter.get('/get-all', expressAsyncHandler(async (req, res) => {
     }
 }))
 
+doubtRouter.get('/answered', expressAsyncHandler(async (req, res) => {
+    try {
+        const doubts = await client.doubts.findMany({
+            where: { answered: true }
+        })
+        res.status(200).json({
+            msg: "fetched answered doubts",
+            doubts
+        })
+    } catch (error) {
+        console.error('Error fetching doubts:', error);
+        res.status(500).json({
+            error: "Failed to fetch doubts"
+        });
+    }
+
+}))
+
 
 export default doubtRouter;

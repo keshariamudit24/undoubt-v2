@@ -373,6 +373,18 @@ wss.on("connection", (socket) => {
         }
       }
 
+	  // ---------------> MARK AS ANSWERED <-----------------
+	  if(parsedMsg.type == 'answered'){
+		const updatedDoubt = await client.doubts.update({
+			where: { id: parsedMsg.payload.doubtId }, 
+			data: { answered: true },
+		});
+		const roomSockets = rooms.get(parsedMsg.payload.roomId);
+		if(roomSockets){
+			broadcast(roomSockets, updatedDoubt)
+		}
+	  }
+
       // ---------------> LEAVE ROOM <-----------------
       if (parsedMsg.type == "leave") {
         // Allow non-admin users to leave the room
@@ -498,6 +510,14 @@ wss.on("connection", (socket) => {
 //   "type": "upvote/downvote",
 //   "payload": {
 //     "roomId": "abc123",
+//     "doubtId": 42
+//   }
+// }
+
+// {
+//   "type": "answered",
+//   "payload": {
+//	   "roomId": abc
 //     "doubtId": 42
 //   }
 // }
