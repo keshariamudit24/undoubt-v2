@@ -373,17 +373,39 @@ wss.on("connection", (socket) => {
         }
       }
 
-	  // ---------------> MARK AS ANSWERED <-----------------
-	  if(parsedMsg.type == 'answered'){
-		const updatedDoubt = await client.doubts.update({
-			where: { id: parsedMsg.payload.doubtId }, 
-			data: { answered: true },
-		});
-		const roomSockets = rooms.get(parsedMsg.payload.roomId);
-		if(roomSockets){
-			broadcast(roomSockets, updatedDoubt)
-		}
-	  }
+      // ---------------> MARK AS ANSWERED <-----------------
+      if (parsedMsg.type == "mark-as-answered") {
+        // Verify that the user is the admin
+        const requestingUser = socketUsers.get(socket);
+        const adminEmail = roomAdmins.get(parsedMsg.payload.roomId);
+
+        if (!requestingUser || requestingUser.email !== adminEmail) {
+          socket.send(
+            JSON.stringify({
+              type: "error",
+              payload: { msg: "Only the room admin can perform this action." },
+            })
+          );
+          return;
+        }
+
+        // Update the doubt in the database
+        await client.doubts.update({
+          where: { id: parsedMsg.payload.doubtId },
+          data: { answered: true },
+        });
+
+        // Notify everyone in the room
+        const roomSockets = rooms.get(parsedMsg.payload.roomId);
+        if (roomSockets) {
+          broadcast(roomSockets, {
+            type: "doubt-answered",
+            payload: {
+              doubtId: parsedMsg.payload.doubtId,
+            },
+          });
+        }
+      }
 
       // ---------------> LEAVE ROOM <-----------------
       if (parsedMsg.type == "leave") {
@@ -515,9 +537,9 @@ wss.on("connection", (socket) => {
 // }
 
 // {
-//   "type": "answered",
+//   "type": "mark-as-answered",
 //   "payload": {
-//	   "roomId": abc
+//     "roomId": "abc123",
 //     "doubtId": 42
 //   }
 // }
