@@ -47,5 +47,42 @@ doubtRouter.get('/get-all', (0, express_async_handler_1.default)(async (req, res
         });
     }
 }));
+doubtRouter.get('/answered', (0, express_async_handler_1.default)(async (req, res) => {
+    const { roomId } = req.query;
+    if (!roomId || typeof roomId !== 'string') {
+        res.status(400).json({
+            error: "Room ID is required"
+        });
+        return;
+    }
+    try {
+        const answeredDoubts = await client.doubts.findMany({
+            where: {
+                room: roomId,
+                answered: true
+            },
+            include: {
+                user: {
+                    select: {
+                        email: true
+                    }
+                }
+            },
+            orderBy: {
+                id: 'asc'
+            }
+        });
+        res.status(200).json({
+            msg: "fetched answered doubts",
+            doubts: answeredDoubts
+        });
+    }
+    catch (error) {
+        console.error('Error fetching answered doubts:', error);
+        res.status(500).json({
+            error: "Failed to fetch answered doubts"
+        });
+    }
+}));
 exports.default = doubtRouter;
 //# sourceMappingURL=doubtRoutes.js.map

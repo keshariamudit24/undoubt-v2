@@ -9,6 +9,7 @@ export interface Doubt {
   user_id: number;
   userEmail?: string;
   room: string;
+  answered?: boolean;
 }
 
 export interface WebSocketMessage {
@@ -206,6 +207,13 @@ class WebSocketService {
     this.send({
       type: 'close',
       payload: { roomId }
+    });
+  }
+
+  markAsAnswered(roomId: string, doubtId: number) {
+    this.send({
+      type: 'mark-as-answered',
+      payload: { roomId, doubtId },
     });
   }
 

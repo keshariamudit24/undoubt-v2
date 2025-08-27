@@ -22,6 +22,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
   const [isLoadingDoubts, setIsLoadingDoubts] = useState(false);
   const [verifiedAdmin, setVerifiedAdmin] = useState<boolean | null>(null);
   const [isRoomClosed, setIsRoomClosed] = useState(false);
+  const [activeTab, setActiveTab] = useState<"doubts" | "answered">("doubts");
 
   // Generate QR code
   useEffect(() => {
@@ -164,6 +165,15 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
       wsService.onMessage("admin-status", (data) => {
         console.log("Admin status update:", data);
         setVerifiedAdmin(data.isAdmin);
+      });
+
+      wsService.onMessage("doubt-answered", (data) => {
+        toast.success("Doubt marked as answered!");
+        setDoubts((prevDoubts) =>
+          prevDoubts.map((doubt) =>
+            doubt.id === data.doubtId ? { ...doubt, answered: true } : doubt
+          )
+        );
       });
 
       // Add handler for room closure notification
@@ -336,6 +346,12 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
     }
   }, [likedDoubts, roomId, user?.email]);
 
+  const handleMarkAsAnswered = (doubtId: number) => {
+    if (isAdmin) {
+      wsService.markAsAnswered(roomId, doubtId);
+    }
+  };
+
   const handleToggleLike = (doubtId: number) => {
     const isCurrentlyLiked = likedDoubts.has(doubtId);
     console.log("Toggle like for doubt:", doubtId, "Currently liked:", isCurrentlyLiked);
@@ -387,6 +403,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
         user_id: backendDoubt.user_id,
         userEmail: backendDoubt.user.email,
         room: backendDoubt.room,
+        answered: backendDoubt.answered,
       }));
 
       setDoubts(previousDoubts);
@@ -450,6 +467,16 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
   const sortedDoubts = useMemo(() => {
     return [...doubts].sort((a, b) => b.upvotes - a.upvotes);
   }, [doubts]);
+
+  const unansweredDoubts = useMemo(
+    () => sortedDoubts.filter((d) => !d.answered),
+    [sortedDoubts]
+  );
+
+  const answeredDoubts = useMemo(
+    () => sortedDoubts.filter((d) => d.answered),
+    [sortedDoubts]
+  );
 
   // Debug logging
   console.log("Room component render state:", {
@@ -720,151 +747,143 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
               {/* Neon glow effect */}
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-cyan-500/10 to-blue-500/10 blur-sm"></div>
               <div className="relative">
-                <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-                  <svg
-                    className="w-6 h-6 text-cyan-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                <div className="flex border-b border-zinc-700 mb-4">
+                  <button
+                    onClick={() => setActiveTab("doubts")}
+                    className={`px-4 py-2 text-lg font-medium transition-colors duration-200 ${
+                      activeTab === "doubts"
+                        ? "text-cyan-400 border-b-2 border-cyan-400"
+                        : "text-zinc-400 hover:text-white"
+                    }`}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Doubts ({doubts.length})
-                </h2>
+                    Doubts ({unansweredDoubts.length})
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("answered")}
+                    className={`px-4 py-2 text-lg font-medium transition-colors duration-200 ${
+                      activeTab === "answered"
+                        ? "text-cyan-400 border-b-2 border-cyan-400"
+                        : "text-zinc-400 hover:text-white"
+                    }`}
+                  >
+                    Answered ({answeredDoubts.length})
+                  </button>
+                </div>
 
-              {isLoadingDoubts ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400 mx-auto mb-4"></div>
-                  <div className="text-zinc-400 text-lg mb-2">Loading previous doubts...</div>
-                  <div className="text-zinc-500 text-sm">Please wait while we fetch the conversation history</div>
-                </div>
-              ) : sortedDoubts.length === 0 ? (
-                <div className="text-center py-8">
-                  <div className="text-zinc-400 text-lg mb-2">
-                    {isRoomClosed ? "This room has been closed" : "No doubts yet"}
-                  </div>
-                  <div className="text-zinc-500 text-sm">
-                    {isRoomClosed
-                      ? "Please leave the room."
-                      : isAdmin && (verifiedAdmin === null || verifiedAdmin === true)
-                      ? "Waiting for participants to ask questions..."
-                      : "Be the first to ask a doubt!"}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {sortedDoubts.map((doubt) => (
-                    <div
-                      key={doubt.id}
-                      className="relative bg-zinc-700 rounded-xl p-4 border border-cyan-500/20 hover:border-cyan-400/40 transition-all duration-300 shadow-lg hover:shadow-cyan-500/10"
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="text-white flex-1">{doubt.doubt}</p>
-                        <div className="flex items-center gap-2 ml-4">
-                          {/* Email visibility toggle for admin */}
-                          {isAdmin && (verifiedAdmin === null || verifiedAdmin === true) && doubt.userEmail && (
-                            <button
-                              onClick={() => toggleEmailVisibility(doubt.id)}
-                              className="text-zinc-400 hover:text-cyan-400 transition-colors"
-                              title={visibleEmails.has(doubt.id) ? "Hide email" : "Show email"}
-                            >
-                              {visibleEmails.has(doubt.id) ? (
-                                <svg
-                                  className="w-5 h-5"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"
-                                  />
-                                </svg>
-                              ) : (
-                                <svg
-                                  className="w-5 h-5"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                                  />
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                                  />
-                                </svg>
-                              )}
-                            </button>
-                          )}
-                          <div className="flex items-center gap-2">
-                            {/* Replace the existing thumbs up icon with a cleaner one */}
-                            <button
-                              onClick={() => handleToggleLike(doubt.id)}
-                              className={`transition-colors ${
-                                likedDoubts.has(doubt.id)
-                                  ? "text-cyan-400 hover:text-cyan-300"
-                                  : "text-zinc-400 hover:text-cyan-400"
-                              }`}
-                              title={likedDoubts.has(doubt.id) ? "Unlike" : "Like"}
-                            >
-                              {likedDoubts.has(doubt.id) ? (
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  className="w-5 h-5"
-                                  viewBox="0 0 20 20"
-                                  fill="currentColor"
-                                >
-                                  <path
-                                    d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z"
-                                  />
-                                </svg>
-                              ) : (
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  className="w-5 h-5"
-                                  fill="none"
-                                  viewBox="0 0 20 20"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={1.5}
-                                    d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z"
-                                  />
-                                </svg>
-                              )}
-                            </button>
-                            <span className="text-zinc-300 font-medium min-w-[2rem] text-center">
-                              {doubt.upvotes}
-                            </span>
-                          </div>
-                        </div>
+                <div className="relative min-h-[100px]">
+                  {/* Unanswered Doubts */}
+                  <div
+                    className={`transition-opacity duration-300 ease-in-out ${
+                      activeTab === "doubts"
+                        ? "opacity-100"
+                        : "opacity-0 pointer-events-none absolute w-full"
+                    }`}
+                  >
+                    {isLoadingDoubts ? (
+                      <div className="text-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400 mx-auto mb-4"></div>
+                        <p>Loading doubts...</p>
                       </div>
-                      {/* Show email only if admin has toggled it visible for this specific doubt */}
-                      {isAdmin && (verifiedAdmin === null || verifiedAdmin === true) && visibleEmails.has(doubt.id) && doubt.userEmail && (
-                        <div className="text-sm text-cyan-400 mt-2">
-                          {doubt.userEmail}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    ) : unansweredDoubts.length === 0 ? (
+                      <div className="text-center py-8 text-zinc-400">
+                        No active doubts.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {unansweredDoubts.map((doubt) => (
+                          <div
+                            key={doubt.id}
+                            className="relative bg-zinc-700 rounded-xl p-4 border border-cyan-500/20 hover:border-cyan-400/40 transition-all duration-300 shadow-lg hover:shadow-cyan-500/10"
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <p className="text-white flex-1">{doubt.doubt}</p>
+                              <div className="flex items-center gap-2 ml-4">
+                                {isAdmin && (verifiedAdmin === null || verifiedAdmin === true) && (
+                                  <>
+                                    <button
+                                      onClick={() => handleMarkAsAnswered(doubt.id)}
+                                      className="text-zinc-400 hover:text-green-400 transition-colors"
+                                      title="Mark as answered"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                      </svg>
+                                    </button>
+                                    {doubt.userEmail && (
+                                      <button
+                                        onClick={() => toggleEmailVisibility(doubt.id)}
+                                        className="text-zinc-400 hover:text-cyan-400 transition-colors"
+                                        title={visibleEmails.has(doubt.id) ? "Hide email" : "Show email"}
+                                      >
+                                        {visibleEmails.has(doubt.id) ? (
+                                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" /></svg>
+                                        ) : (
+                                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                        )}
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleToggleLike(doubt.id)}
+                                    className={`transition-colors ${ likedDoubts.has(doubt.id) ? "text-cyan-400 hover:text-cyan-300" : "text-zinc-400 hover:text-cyan-400" }`}
+                                    title={likedDoubts.has(doubt.id) ? "Unlike" : "Like"}
+                                  >
+                                    {likedDoubts.has(doubt.id) ? (
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" /></svg>
+                                    ) : (
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 20 20" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" /></svg>
+                                    )}
+                                  </button>
+                                  <span className="text-zinc-300 font-medium min-w-[2rem] text-center">
+                                    {doubt.upvotes}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            {isAdmin && (verifiedAdmin === null || verifiedAdmin === true) && visibleEmails.has(doubt.id) && doubt.userEmail && (
+                              <div className="text-sm text-cyan-400 mt-2">
+                                {doubt.userEmail}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Answered Doubts */}
+                  <div
+                    className={`transition-opacity duration-300 ease-in-out ${
+                      activeTab === "answered"
+                        ? "opacity-100"
+                        : "opacity-0 pointer-events-none absolute w-full"
+                    }`}
+                  >
+                    {answeredDoubts.length === 0 ? (
+                      <div className="text-center py-8 text-zinc-400">
+                        No answered doubts yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {answeredDoubts.map((doubt) => (
+                          <div
+                            key={doubt.id}
+                            className="relative bg-zinc-900 rounded-xl p-4 border border-green-500/30"
+                          >
+                            <div className="flex justify-between items-start">
+                              <p className="text-zinc-300 flex-1">{doubt.doubt}</p>
+                              <div className="flex items-center gap-2 ml-4">
+                                <span className="text-green-400 font-bold">Answered</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
               </div>
             </div>
           </div>

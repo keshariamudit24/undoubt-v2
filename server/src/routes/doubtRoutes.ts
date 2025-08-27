@@ -49,21 +49,42 @@ doubtRouter.get('/get-all', expressAsyncHandler(async (req, res) => {
 }))
 
 doubtRouter.get('/answered', expressAsyncHandler(async (req, res) => {
+    const { roomId } = req.query;
+
+    if (!roomId || typeof roomId !== 'string') {
+        res.status(400).json({
+            error: "Room ID is required"
+        });
+        return;
+    }
+
     try {
-        const doubts = await client.doubts.findMany({
-            where: { answered: true }
+        const answeredDoubts = await client.doubts.findMany({
+            where: { 
+                room: roomId,
+                answered: true 
+            },
+            include: {
+                user: {
+                    select: {
+                        email: true
+                    }
+                }
+            },
+            orderBy: {
+                id: 'asc'
+            }
         })
         res.status(200).json({
             msg: "fetched answered doubts",
-            doubts
+            doubts: answeredDoubts
         })
     } catch (error) {
-        console.error('Error fetching doubts:', error);
+        console.error('Error fetching answered doubts:', error);
         res.status(500).json({
-            error: "Failed to fetch doubts"
+            error: "Failed to fetch answered doubts"
         });
     }
-
 }))
 
 
