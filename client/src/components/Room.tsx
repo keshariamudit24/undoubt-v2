@@ -403,7 +403,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
         user_id: backendDoubt.user_id,
         userEmail: backendDoubt.user.email,
         room: backendDoubt.room,
-        answered: backendDoubt.answered,
+        answered: backendDoubt.answered
       }));
 
       setDoubts(previousDoubts);
@@ -715,7 +715,7 @@ const Room: React.FC<RoomProps> = ({ roomId, isAdmin, onLeaveRoom }) => {
                     </svg>
                     Ask a Doubt
                   </h2>
-                  <div className="flex gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3">
                     <input
                       type="text"
                       value={newDoubt}

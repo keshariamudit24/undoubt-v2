@@ -32,6 +32,7 @@ export interface BackendDoubt {
   user: {
     email: string;
   };
+  answered?: boolean; // This property was missing from your provided file but is used in Room.tsx
 }
 
 export interface DoubtsResponse {
